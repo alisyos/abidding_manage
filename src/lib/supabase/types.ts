@@ -60,7 +60,6 @@ export interface Company {
   no: number | null;
   name: string;
   account_type: AccountType;
-  default_discount_rate: number;
   user_database: string | null;
   user_agency_id: string | null;
   url: string | null;
@@ -96,7 +95,8 @@ export interface Product {
   id: string;
   media: Media;
   tier: Tier;
-  unit_price: number;
+  unit_price: number;   // 제휴사 할인가 (VAT 별도)
+  list_price: number;   // 공시가 (VAT 별도) — 임계값 판정 + 미달 시 청구
   monitoring_period: string | null;
   is_active: boolean;
   effective_from: string;
@@ -112,7 +112,6 @@ export interface Quote {
   status: QuoteStatus;
   service_start: string;
   service_end: string;
-  discount_rate: number;
   addon_fee: number;
   variable_adjust: number;
   fixed_adjust: number;
@@ -147,7 +146,6 @@ export interface QuoteAdjustment {
   quote_id: string;
   adjustment_date: string;
   account_type: AccountType | null;
-  discount_rate: number | null;
   media: Media;
   delta_unique: number;
   delta_premium: number;

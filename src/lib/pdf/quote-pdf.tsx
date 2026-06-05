@@ -1,7 +1,7 @@
 import 'server-only';
 import { Document, Page, View, Text, StyleSheet } from '@react-pdf/renderer';
 
-import { formatKRW, formatPercent } from '@/lib/format/currency';
+import { formatKRW } from '@/lib/format/currency';
 import { buildPeriodLabel } from '@/lib/quotes/period';
 import { todayKstISO } from '@/lib/format/date';
 import {
@@ -324,9 +324,6 @@ export function QuotePdfDocument(props: QuotePdfProps) {
         <View style={styles.totalsTable}>
           {Number(quote.addon_fee) > 0 && (
             <TotalRow label="부가서비스" value={formatKRW(quote.addon_fee)} />
-          )}
-          {Number(quote.discount_rate) > 0 && (
-            <TotalRow label="할인율" value={formatPercent(quote.discount_rate)} />
           )}
           {Number(quote.fixed_adjust) !== 0 && (
             <TotalRow label="고정 조정가" value={formatKRW(quote.fixed_adjust)} />

@@ -31,7 +31,7 @@ export default async function CompaniesPage({ searchParams }: PageProps) {
 
   let query = supabase
     .from('companies')
-    .select('id, no, name, account_type, default_discount_rate, is_active, sub_companies(id, company_contacts(id))', {
+    .select('id, no, name, account_type, is_active, sub_companies(id, company_contacts(id))', {
       count: 'exact',
     })
     .order('name', { ascending: true })
@@ -63,7 +63,6 @@ export default async function CompaniesPage({ searchParams }: PageProps) {
       no: c.no ?? null,
       name: c.name,
       account_type: c.account_type as 'advertiser' | 'agency',
-      default_discount_rate: Number(c.default_discount_rate ?? 0),
       is_active: c.is_active,
       sub_count: subs.length,
       contact_count: subs.reduce((sum, s) => sum + (s.company_contacts?.length ?? 0), 0),

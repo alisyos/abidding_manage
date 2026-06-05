@@ -62,7 +62,6 @@ export async function applyImport(
       user_agency_id: m.user_agency_id,
       url: m.url,
       account_type: d?.account_type ?? 'agency', // 기본값 제휴사
-      default_discount_rate: d?.default_discount_rate ?? 0,
       is_active: true,
     });
   }

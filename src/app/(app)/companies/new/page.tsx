@@ -8,7 +8,6 @@ export default function NewCompanyPage() {
   const defaults: CompanyInput = {
     name: '',
     account_type: 'agency',
-    default_discount_rate: 0,
     user_database: '',
     user_agency_id: '',
     url: '',

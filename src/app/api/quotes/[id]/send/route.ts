@@ -63,7 +63,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       .from('quotes')
       .select(
         `id, quote_no, company_id, sub_company_id, status, service_start, service_end,
-         discount_rate, addon_fee, variable_adjust, fixed_adjust,
+         addon_fee, variable_adjust, fixed_adjust,
          base_amount, vat_amount, total_amount, sender_snapshot,
          bank_account, payment_method, tax_invoice_type, notes,
          sent_at, won_at, paid_at, created_at, updated_at, created_by,
@@ -118,7 +118,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     status: qRow.status as QuoteStatus,
     service_start: qRow.service_start,
     service_end: qRow.service_end,
-    discount_rate: Number(qRow.discount_rate),
     addon_fee: Number(qRow.addon_fee),
     variable_adjust: Number(qRow.variable_adjust),
     fixed_adjust: Number(qRow.fixed_adjust),

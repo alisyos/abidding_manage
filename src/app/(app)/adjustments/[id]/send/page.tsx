@@ -31,11 +31,11 @@ export default async function SendAdjustmentPage({ params }: PageProps) {
     supabase
       .from('quote_adjustments')
       .select(
-        `id, quote_id, adjustment_date, account_type, discount_rate, media,
+        `id, quote_id, adjustment_date, account_type, media,
          delta_unique, delta_premium, delta_basic, delta_lite,
          pre_adjust_amount, reason, created_at,
          quotes(id, quote_no, company_id, sub_company_id, status, service_start, service_end,
-                discount_rate, addon_fee, variable_adjust, fixed_adjust,
+                addon_fee, variable_adjust, fixed_adjust,
                 base_amount, vat_amount, total_amount, sender_snapshot,
                 bank_account, payment_method, tax_invoice_type, notes,
                 sent_at, won_at, paid_at, created_at, updated_at, created_by,
@@ -82,7 +82,6 @@ export default async function SendAdjustmentPage({ params }: PageProps) {
     quote_id: adj.quote_id,
     adjustment_date: adj.adjustment_date,
     account_type: adj.account_type,
-    discount_rate: adj.discount_rate,
     media: adj.media as Media,
     delta_unique: adj.delta_unique,
     delta_premium: adj.delta_premium,
@@ -101,7 +100,6 @@ export default async function SendAdjustmentPage({ params }: PageProps) {
     status: adj.quotes.status as QuoteStatus,
     service_start: adj.quotes.service_start,
     service_end: adj.quotes.service_end,
-    discount_rate: Number(adj.quotes.discount_rate),
     addon_fee: Number(adj.quotes.addon_fee),
     variable_adjust: Number(adj.quotes.variable_adjust),
     fixed_adjust: Number(adj.quotes.fixed_adjust),

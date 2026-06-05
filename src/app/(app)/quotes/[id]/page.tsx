@@ -16,7 +16,7 @@ import {
 import { createClient } from '@/lib/supabase/server';
 import { QuoteStatusBadge } from '@/components/quote/quote-status-badge';
 import { StatusChangeMenu } from '../_components/status-change-menu';
-import { formatKRW, formatPercent } from '@/lib/format/currency';
+import { formatKRW } from '@/lib/format/currency';
 import { formatKstDate, formatKstDateTime } from '@/lib/format/date';
 import { buildPeriodLabel } from '@/lib/quotes/period';
 import {
@@ -56,7 +56,6 @@ export default async function QuoteDetailPage({ params }: PageProps) {
     status: QuoteStatus;
     service_start: string;
     service_end: string;
-    discount_rate: number;
     addon_fee: number;
     fixed_adjust: number;
     variable_adjust: number;
@@ -76,7 +75,7 @@ export default async function QuoteDetailPage({ params }: PageProps) {
   const { data: qRaw, error: qErr } = await supabase
     .from('quotes')
     .select(
-      `id, quote_no, status, service_start, service_end, discount_rate, addon_fee,
+      `id, quote_no, status, service_start, service_end, addon_fee,
        fixed_adjust, variable_adjust, base_amount, vat_amount, total_amount,
        bank_account, payment_method, tax_invoice_type, notes,
        sent_at, won_at, paid_at,
@@ -197,7 +196,6 @@ export default async function QuoteDetailPage({ params }: PageProps) {
             <h2 className="text-sm font-semibold text-gray-900 mb-4">금액 요약</h2>
             <dl className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3 text-sm">
               <InfoRow label="기본가" value={formatKRW(q.base_amount)} mono />
-              <InfoRow label="할인율" value={formatPercent(q.discount_rate)} />
               <InfoRow label="부가서비스" value={formatKRW(q.addon_fee)} mono />
               <InfoRow label="고정 조정가" value={formatKRW(q.fixed_adjust)} mono />
               <InfoRow label="변동 조정가" value={formatKRW(q.variable_adjust)} mono />

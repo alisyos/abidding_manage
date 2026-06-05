@@ -15,6 +15,7 @@ export interface RenderVars {
     phone: string;
     email: string;
     bank_account: string;
+    address: string;
   };
   company: {
     name: string;
@@ -24,6 +25,10 @@ export interface RenderVars {
     service_start: string;
     service_end: string;
     total_amount: string;
+    /** '에이비딩 자동입찰 솔루션 2026.06 견적서 요약_거래처명' */
+    summary_label: string;
+    /** rowspan 적용된 매체×등급 매트릭스 표 HTML. triple-mustache로 출력 */
+    items_table_html: string;
   };
   /**
    * 조정 안내 메일에만 채워짐. mustache 의 `{{#adjustment}}...{{/adjustment}}`

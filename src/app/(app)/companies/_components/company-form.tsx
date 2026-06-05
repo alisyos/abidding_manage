@@ -114,22 +114,6 @@ export function CompanyForm({ mode, companyId, defaultValues }: Props) {
               </div>
 
               <div>
-                <Label className="text-xs">기본 할인율 (0~1, 예: 0.10)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="1"
-                  {...form.register('default_discount_rate', { valueAsNumber: true })}
-                />
-                {form.formState.errors.default_discount_rate && (
-                  <p className="mt-1 text-xs text-red-500">
-                    {form.formState.errors.default_discount_rate.message}
-                  </p>
-                )}
-              </div>
-
-              <div>
                 <Label className="text-xs">userDatabase</Label>
                 <Input {...form.register('user_database')} />
               </div>

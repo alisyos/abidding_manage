@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getMailFrom, getTransporter } from '@/lib/email/smtp';
 import { buildQuoteEmail } from '@/lib/email/builders';
 import { applyTransition } from '@/lib/quotes/statusMachine';
+import { fetchActivePriceMap, priceKey } from '@/lib/quotes/pricing';
 import { bulkSendInputSchema } from '@/lib/validation/bulk';
 import { generateQuotePdfBuffer } from '@/lib/pdf/generate-quote-pdf';
 import type {
@@ -55,10 +56,11 @@ export async function POST(req: Request) {
   }
   const { ids } = parsed.data;
 
-  // 메일 템플릿 + 발신자는 1회만 조회 (재사용)
-  const [tplRes, senderRes] = await Promise.all([
+  // 메일 템플릿 + 발신자 + 현재 단가 — 1회만 조회 (재사용)
+  const [tplRes, senderRes, priceMap] = await Promise.all([
     supabase.from('email_templates').select('*').eq('key', 'quote_default').single(),
     supabase.from('sender_profile').select('*').eq('id', 1).single(),
+    fetchActivePriceMap(supabase),
   ]);
   if (tplRes.error || !tplRes.data) {
     return NextResponse.json(
@@ -119,7 +121,7 @@ export async function POST(req: Request) {
           const { data: qRaw, error: qErr } = await supabase
             .from('quotes')
             .select(
-              'id, quote_no, company_id, sub_company_id, status, service_start, service_end, discount_rate, addon_fee, variable_adjust, fixed_adjust, base_amount, vat_amount, total_amount, sender_snapshot, bank_account, payment_method, tax_invoice_type, notes, sent_at, won_at, paid_at, created_at, updated_at, created_by, companies(id, name), sub_companies(id, name)',
+              'id, quote_no, company_id, sub_company_id, status, service_start, service_end, addon_fee, variable_adjust, fixed_adjust, base_amount, vat_amount, total_amount, sender_snapshot, bank_account, payment_method, tax_invoice_type, notes, sent_at, won_at, paid_at, created_at, updated_at, created_by, companies(id, name), sub_companies(id, name)',
             )
             .eq('id', id)
             .single();
@@ -154,7 +156,6 @@ export async function POST(req: Request) {
             status: qRow.status as QuoteStatus,
             service_start: qRow.service_start,
             service_end: qRow.service_end,
-            discount_rate: Number(qRow.discount_rate),
             addon_fee: Number(qRow.addon_fee),
             variable_adjust: Number(qRow.variable_adjust),
             fixed_adjust: Number(qRow.fixed_adjust),
@@ -174,11 +175,26 @@ export async function POST(req: Request) {
             paid_at: qRow.paid_at,
           };
 
+          // 이 견적의 items prefetch 결과 (메일 본문 표 + PDF 양쪽에 사용)
+          // list_price도 현재 단가맵에서 매핑하여 메일 본문 표의 절약액 계산용
+          const items = (itemsByQuote.get(id) ?? []).map((it) => {
+            const p = priceMap.get(priceKey(it.media, it.tier));
+            return {
+              media: it.media,
+              tier: it.tier,
+              quantity: Number(it.quantity),
+              unit_price: Number(it.unit_price),
+              line_total: Number(it.line_total),
+              list_price: Number(p?.list_price ?? 0),
+            };
+          });
+
           const built = buildQuoteEmail({
             quote,
             sender,
             company: qRow.companies,
             contacts,
+            items,
             template,
           });
 
@@ -186,15 +202,8 @@ export async function POST(req: Request) {
             throw new Error('수신자(primary 연락처)가 없습니다');
           }
 
-          // PDF 생성 (이 견적의 items prefetch 결과 활용)
+          // PDF 생성
           const primaryContact = contacts.find((c) => c.role === 'primary') ?? null;
-          const items = (itemsByQuote.get(id) ?? []).map((it) => ({
-            media: it.media,
-            tier: it.tier,
-            quantity: Number(it.quantity),
-            unit_price: Number(it.unit_price),
-            line_total: Number(it.line_total),
-          }));
           const pdfBuffer = await generateQuotePdfBuffer({
             quote,
             sender,

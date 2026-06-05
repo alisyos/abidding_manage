@@ -1,4 +1,4 @@
-import { formatKRW, formatPercent } from '@/lib/format/currency';
+import { formatKRW } from '@/lib/format/currency';
 import { todayKstISO } from '@/lib/format/date';
 import { buildPeriodLabel } from '@/lib/quotes/period';
 import {
@@ -129,12 +129,6 @@ export function QuotePreview({ quote, sender, company, subCompany, primaryContac
             <tr>
               <Cell label className="w-[200px]">부가서비스</Cell>
               <Cell className="text-right">{formatKRW(quote.addon_fee)}</Cell>
-            </tr>
-          )}
-          {Number(quote.discount_rate) > 0 && (
-            <tr>
-              <Cell label>할인율</Cell>
-              <Cell className="text-right">{formatPercent(quote.discount_rate)}</Cell>
             </tr>
           )}
           {Number(quote.fixed_adjust) !== 0 && (

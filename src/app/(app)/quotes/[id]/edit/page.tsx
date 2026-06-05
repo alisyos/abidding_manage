@@ -25,7 +25,6 @@ export default async function EditQuotePage({ params }: PageProps) {
     sub_company_id: string | null;
     service_start: string;
     service_end: string;
-    discount_rate: number;
     addon_fee: number;
     variable_adjust: number;
     fixed_adjust: number;
@@ -38,7 +37,6 @@ export default async function EditQuotePage({ params }: PageProps) {
   type CompanyRow = {
     id: string;
     name: string;
-    default_discount_rate: number;
     sub_companies: { id: string; name: string }[] | null;
   };
 
@@ -46,7 +44,7 @@ export default async function EditQuotePage({ params }: PageProps) {
     supabase
       .from('quotes')
       .select(
-        'id, quote_no, company_id, sub_company_id, service_start, service_end, discount_rate, addon_fee, variable_adjust, fixed_adjust, bank_account, payment_method, tax_invoice_type, notes',
+        'id, quote_no, company_id, sub_company_id, service_start, service_end, addon_fee, variable_adjust, fixed_adjust, bank_account, payment_method, tax_invoice_type, notes',
       )
       .eq('id', params.id)
       .single(),
@@ -56,7 +54,7 @@ export default async function EditQuotePage({ params }: PageProps) {
       .eq('quote_id', params.id),
     supabase
       .from('companies')
-      .select('id, name, default_discount_rate, sub_companies(id, name)')
+      .select('id, name, sub_companies(id, name)')
       .eq('is_active', true)
       .order('name', { ascending: true }),
     fetchActivePriceMap(supabase),
@@ -68,7 +66,6 @@ export default async function EditQuotePage({ params }: PageProps) {
   const companies: CompanyOption[] = ((cRes.data ?? []) as unknown as CompanyRow[]).map((c) => ({
     id: c.id,
     name: c.name,
-    default_discount_rate: Number(c.default_discount_rate ?? 0),
     sub_companies: (c.sub_companies ?? []).slice().sort((a, b) => a.name.localeCompare(b.name)),
   }));
 
@@ -76,16 +73,22 @@ export default async function EditQuotePage({ params }: PageProps) {
   for (const media of MEDIA_ORDER) {
     for (const tier of TIER_ORDER) {
       const p = priceMap.get(`${media}__${tier}`) as Product | undefined;
-      prices.push({ media, tier, unit_price: Number(p?.unit_price ?? 0) });
+      prices.push({
+        media,
+        tier,
+        unit_price: Number(p?.unit_price ?? 0),
+        list_price: Number(p?.list_price ?? 0),
+      });
     }
   }
 
+  // 기존 견적의 unit_price는 발급 시점 단가 스냅샷.
+  // 편집 시에는 현재 priceMap의 list_price를 다시 채워서 임계값 판정.
   const defaults: QuoteInput = {
     company_id: q.company_id,
     sub_company_id: q.sub_company_id,
     service_start: q.service_start,
     service_end: q.service_end,
-    discount_rate: Number(q.discount_rate ?? 0),
     addon_fee: Number(q.addon_fee ?? 0),
     variable_adjust: Number(q.variable_adjust ?? 0),
     fixed_adjust: Number(q.fixed_adjust ?? 0),
@@ -93,12 +96,16 @@ export default async function EditQuotePage({ params }: PageProps) {
     payment_method: q.payment_method ?? '',
     tax_invoice_type: q.tax_invoice_type,
     notes: q.notes ?? '',
-    items: itemRows.map((i) => ({
-      media: i.media,
-      tier: i.tier,
-      quantity: Number(i.quantity),
-      unit_price: Number(i.unit_price),
-    })),
+    items: itemRows.map((i) => {
+      const p = priceMap.get(`${i.media}__${i.tier}`) as Product | undefined;
+      return {
+        media: i.media,
+        tier: i.tier,
+        quantity: Number(i.quantity),
+        unit_price: Number(p?.unit_price ?? i.unit_price),
+        list_price: Number(p?.list_price ?? 0),
+      };
+    }),
   };
 
   return (

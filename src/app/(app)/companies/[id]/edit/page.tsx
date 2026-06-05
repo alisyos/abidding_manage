@@ -45,7 +45,6 @@ export default async function EditCompanyPage({ params }: PageProps) {
     no: number | null;
     name: string;
     account_type: 'advertiser' | 'agency';
-    default_discount_rate: number;
     user_database: string | null;
     user_agency_id: string | null;
     url: string | null;
@@ -59,7 +58,6 @@ export default async function EditCompanyPage({ params }: PageProps) {
     no: data.no,
     name: data.name,
     account_type: data.account_type,
-    default_discount_rate: Number(data.default_discount_rate ?? 0),
     user_database: data.user_database ?? '',
     user_agency_id: data.user_agency_id ?? '',
     url: data.url ?? '',

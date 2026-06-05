@@ -12,7 +12,6 @@ import { ColumnHeader } from '@/components/data-table/column-header';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { StatusBadge } from './status-badge';
-import { formatPercent } from '@/lib/format/currency';
 import { ACCOUNT_TYPE_LABEL } from '@/lib/supabase/types';
 import { bulkActivate, bulkDeactivate, bulkSoftDelete } from '../actions';
 
@@ -21,7 +20,6 @@ export interface CompaniesRow {
   no: number | null;
   name: string;
   account_type: 'advertiser' | 'agency';
-  default_discount_rate: number;
   is_active: boolean;
   sub_count: number;
   contact_count: number;
@@ -97,16 +95,6 @@ export function CompaniesTable({
           </span>
         ),
         size: 80,
-      },
-      {
-        accessorKey: 'default_discount_rate',
-        header: ({ column }) => <ColumnHeader column={column} label="기본할인율" />,
-        cell: ({ row }) => (
-          <span className="text-sm tabular-nums">
-            {formatPercent(row.original.default_discount_rate)}
-          </span>
-        ),
-        size: 100,
       },
       {
         accessorKey: 'sub_count',

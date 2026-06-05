@@ -6,7 +6,7 @@ import { productPatchSchema } from '@/lib/validation/product';
 
 export async function updateProduct(
   id: string,
-  patchRaw: { unit_price: number; monitoring_period: string | null },
+  patchRaw: { unit_price: number; list_price: number; monitoring_period: string | null },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const parsed = productPatchSchema.safeParse(patchRaw);
   if (!parsed.success) {
@@ -18,6 +18,7 @@ export async function updateProduct(
     .from('products')
     .update({
       unit_price: parsed.data.unit_price,
+      list_price: parsed.data.list_price,
       monitoring_period: parsed.data.monitoring_period,
     })
     .eq('id', id);

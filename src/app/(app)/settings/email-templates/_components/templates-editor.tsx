@@ -26,12 +26,15 @@ const VARIABLE_HINTS = [
   ['{{sender.company_name}}', '발신자 회사명'],
   ['{{sender.phone}}', '발신자 연락처'],
   ['{{sender.email}}', '발신자 이메일'],
+  ['{{sender.address}}', '발신자 주소'],
   ['{{sender.bank_account}}', '발신자 입금통장'],
   ['{{company.name}}', '수신 거래처명'],
   ['{{quote.quote_no}}', '견적번호'],
   ['{{quote.service_start}}', '서비스 시작일'],
   ['{{quote.service_end}}', '서비스 종료일'],
   ['{{quote.total_amount}}', '견적가 (formatKRW 적용)'],
+  ['{{quote.summary_label}}', '견적 요약 라벨 (예: 에이비딩 자동입찰 솔루션 2026.06 견적서 요약_거래처명)'],
+  ['{{{quote.items_table_html}}}', '★ 견적 요약 표 HTML (반드시 중괄호 3개! 이스케이프 회피)'],
 ] as const;
 
 export function TemplatesEditor({ templates }: Props) {

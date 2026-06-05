@@ -25,11 +25,6 @@ export const companyInputSchema = z.object({
   no: z.number().int().nullable().optional(),
   name: z.string().trim().min(1, '거래처명을 입력해주세요'),
   account_type: z.enum(['advertiser', 'agency']),
-  default_discount_rate: z
-    .number({ invalid_type_error: '숫자로 입력해주세요' })
-    .min(0, '0 이상')
-    .max(1, '1 이하 (예: 0.10 = 10%)')
-    .default(0),
   user_database: optString,
   user_agency_id: optString,
   url: optString,

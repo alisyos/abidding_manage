@@ -2,13 +2,16 @@ import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/page-header';
 import { createClient } from '@/lib/supabase/server';
 import { buildQuoteEmail } from '@/lib/email/builders';
+import { fetchActivePriceMap, priceKey } from '@/lib/quotes/pricing';
 import { SendPageClient } from './_components/send-page-client';
 import type {
   CompanyContact,
   EmailTemplate,
+  Media,
   Quote,
   SenderProfile,
   TaxInvoiceType,
+  Tier,
   QuoteStatus,
 } from '@/lib/supabase/types';
 
@@ -25,12 +28,12 @@ export default async function SendQuotePage({ params }: PageProps) {
     companies: { id: string; name: string };
   };
 
-  const [qRes, tplRes, sRes] = await Promise.all([
+  const [qRes, iRes, tplRes, sRes] = await Promise.all([
     supabase
       .from('quotes')
       .select(
         `id, quote_no, company_id, sub_company_id, status, service_start, service_end,
-         discount_rate, addon_fee, variable_adjust, fixed_adjust,
+         addon_fee, variable_adjust, fixed_adjust,
          base_amount, vat_amount, total_amount, sender_snapshot,
          bank_account, payment_method, tax_invoice_type, notes,
          sent_at, won_at, paid_at, created_at, updated_at, created_by,
@@ -38,6 +41,10 @@ export default async function SendQuotePage({ params }: PageProps) {
       )
       .eq('id', params.id)
       .single(),
+    supabase
+      .from('quote_items')
+      .select('media, tier, quantity, unit_price, line_total')
+      .eq('quote_id', params.id),
     supabase.from('email_templates').select('*').eq('key', 'quote_default').single(),
     supabase.from('sender_profile').select('*').eq('id', 1).single(),
   ]);
@@ -83,7 +90,6 @@ export default async function SendQuotePage({ params }: PageProps) {
     status: qRaw.status as QuoteStatus,
     service_start: qRaw.service_start,
     service_end: qRaw.service_end,
-    discount_rate: Number(qRaw.discount_rate),
     addon_fee: Number(qRaw.addon_fee),
     variable_adjust: Number(qRaw.variable_adjust),
     fixed_adjust: Number(qRaw.fixed_adjust),
@@ -103,11 +109,33 @@ export default async function SendQuotePage({ params }: PageProps) {
     paid_at: qRaw.paid_at,
   };
 
+  type ItemRow = {
+    media: Media;
+    tier: Tier;
+    quantity: number;
+    unit_price: number;
+    line_total: number;
+  };
+  // 현재 공시 단가 (메일 본문 표 절약액 표시용)
+  const priceMap = await fetchActivePriceMap(supabase);
+  const items = ((iRes.data ?? []) as unknown as ItemRow[]).map((it) => {
+    const p = priceMap.get(priceKey(it.media, it.tier));
+    return {
+      media: it.media,
+      tier: it.tier,
+      quantity: Number(it.quantity),
+      unit_price: Number(it.unit_price),
+      line_total: Number(it.line_total),
+      list_price: Number(p?.list_price ?? 0),
+    };
+  });
+
   const built = buildQuoteEmail({
     quote,
     sender,
     company: qRaw.companies,
     contacts,
+    items,
     template: tpl,
   });
 

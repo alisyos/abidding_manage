@@ -311,7 +311,7 @@ function renderErrorContext(
     case 'contacts':
       return `${v('company_name')} / ${v('sub_company_name')} / [${v('role')}] ${v('display_name')} → 이메일="${v('email')}"`;
     case 'draft':
-      return `거래처="${v('name')}" / 계정유형=${v('account_type')} / 할인율=${v('default_discount_rate')}`;
+      return `거래처="${v('name')}" / 계정유형=${v('account_type')}`;
   }
 }
 
@@ -372,7 +372,6 @@ function renderTableHead(kind: 'master' | 'subCompanies' | 'usage' | 'contacts' 
           <TableRow>
             <TableHead>거래처</TableHead>
             <TableHead>계정유형</TableHead>
-            <TableHead>할인율</TableHead>
           </TableRow>
         </TableHeader>
       );
@@ -433,11 +432,6 @@ function renderTableRow(
         <TableRow key={i}>
           <TableCell className="font-medium">{cell(r.name)}</TableCell>
           <TableCell>{r.account_type === 'advertiser' ? '광고주' : r.account_type === 'agency' ? '제휴사' : '-'}</TableCell>
-          <TableCell className="tabular-nums">
-            {r.default_discount_rate != null
-              ? `${(Number(r.default_discount_rate) * 100).toFixed(1)}%`
-              : '-'}
-          </TableCell>
         </TableRow>
       );
   }

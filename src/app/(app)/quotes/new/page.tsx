@@ -16,7 +16,7 @@ export default async function NewQuotePage() {
   const [companiesRes, priceMap] = await Promise.all([
     supabase
       .from('companies')
-      .select('id, name, default_discount_rate, sub_companies(id, name)')
+      .select('id, name, sub_companies(id, name)')
       .eq('is_active', true)
       .order('name', { ascending: true }),
     fetchActivePriceMap(supabase),
@@ -34,7 +34,6 @@ export default async function NewQuotePage() {
   type CompanyRow = {
     id: string;
     name: string;
-    default_discount_rate: number;
     sub_companies: { id: string; name: string }[] | null;
   };
 
@@ -42,7 +41,6 @@ export default async function NewQuotePage() {
     (c) => ({
       id: c.id,
       name: c.name,
-      default_discount_rate: Number(c.default_discount_rate ?? 0),
       sub_companies: (c.sub_companies ?? []).slice().sort((a, b) => a.name.localeCompare(b.name)),
     }),
   );
@@ -51,7 +49,12 @@ export default async function NewQuotePage() {
   for (const media of MEDIA_ORDER) {
     for (const tier of TIER_ORDER) {
       const p = priceMap.get(`${media}__${tier}`) as Product | undefined;
-      prices.push({ media, tier, unit_price: Number(p?.unit_price ?? 0) });
+      prices.push({
+        media,
+        tier,
+        unit_price: Number(p?.unit_price ?? 0),
+        list_price: Number(p?.list_price ?? 0),
+      });
     }
   }
 
@@ -68,7 +71,6 @@ export default async function NewQuotePage() {
     sub_company_id: null,
     service_start: defaultStart,
     service_end: defaultEnd,
-    discount_rate: 0,
     addon_fee: 0,
     variable_adjust: 0,
     fixed_adjust: 0,
@@ -83,7 +85,7 @@ export default async function NewQuotePage() {
     <div>
       <PageHeader
         title="신규 견적"
-        description="거래처를 선택하면 기본 할인율이 자동 적용됩니다. 견적번호는 저장 시 'Q-YYYYMM-###' 형식으로 자동 발급됩니다."
+        description="견적번호는 저장 시 'Q-YYYYMM-###' 형식으로 자동 발급됩니다. 할인은 공시가 합계 100,000원 이상이면 자동 적용됩니다."
       />
       <div className="p-8 max-w-6xl">
         <QuoteForm mode="create" defaultValues={defaults} companies={companies} prices={prices} />

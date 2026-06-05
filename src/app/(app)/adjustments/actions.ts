@@ -43,17 +43,15 @@ export async function createAdjustment(
     status: QuoteStatus;
     service_start: string;
     service_end: string;
-    discount_rate: number;
     addon_fee: number;
     fixed_adjust: number;
     variable_adjust: number;
-    default_discount_rate?: number;
-    companies: { account_type: 'advertiser' | 'agency'; default_discount_rate: number };
+    companies: { account_type: 'advertiser' | 'agency' };
   };
   const { data: qRaw, error: qErr } = await supabase
     .from('quotes')
     .select(
-      'id, company_id, sub_company_id, status, service_start, service_end, discount_rate, addon_fee, fixed_adjust, variable_adjust, companies(account_type, default_discount_rate)',
+      'id, company_id, sub_company_id, status, service_start, service_end, addon_fee, fixed_adjust, variable_adjust, companies(account_type)',
     )
     .eq('id', input.quote_id)
     .single();
@@ -66,6 +64,7 @@ export async function createAdjustment(
     .select('media, tier, quantity, unit_price')
     .eq('quote_id', input.quote_id);
   const items = (itemsRaw ?? []) as unknown as ItemRow[];
+
 
   const priceMap = await fetchActivePriceMap(supabase);
 
@@ -89,14 +88,13 @@ export async function createAdjustment(
     adjustmentDate: input.adjustment_date,
   });
 
-  // 조정 행 insert
+  // 조정 행 insert (discount_rate 컬럼은 0004 마이그레이션으로 제거됨)
   const { data: insRow, error: insErr } = await supabase
     .from('quote_adjustments')
     .insert({
       quote_id: input.quote_id,
       adjustment_date: input.adjustment_date,
       account_type: q.companies.account_type,
-      discount_rate: q.discount_rate,
       media: input.media,
       delta_unique: input.delta_unique,
       delta_premium: input.delta_premium,
@@ -112,11 +110,17 @@ export async function createAdjustment(
   }
 
   // 견적 variable_adjust 갱신 + 금액 재계산
+  // 조정 시점에는 이미 발급된 견적의 line_total을 그대로 사용 (할인 적용 여부 보존).
+  // 신규 가격 정책 임계값 판정은 견적 생성/수정 시점에만 적용되고,
+  // 조정은 variable_adjust 가감만 반영하므로 list_price를 unit_price와 동일하게 둠.
   const newVariableAdjust = Number(q.variable_adjust ?? 0) + calc.preAdjustAmount;
   const recalc = computeQuote(
-    items.map((i) => ({ quantity: i.quantity, unit_price: Number(i.unit_price) })),
+    items.map((i) => ({
+      quantity: i.quantity,
+      unit_price: Number(i.unit_price),
+      list_price: Number(i.unit_price),
+    })),
     Number(q.addon_fee ?? 0),
-    Number(q.discount_rate ?? 0),
     Number(q.fixed_adjust ?? 0),
     newVariableAdjust,
   );

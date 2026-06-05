@@ -41,7 +41,6 @@ export const contactRowSchema = z.object({
 export const draftRowSchema = z.object({
   name: z.string().trim().min(1),
   account_type: z.enum(['advertiser', 'agency']).nullable(),
-  default_discount_rate: z.number().min(0).max(1).nullable(),
 });
 
 export type MasterRow = z.infer<typeof masterRowSchema>;

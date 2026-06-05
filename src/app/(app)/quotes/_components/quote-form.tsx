@@ -37,7 +37,6 @@ const TIER_ORDER: Tier[] = ['unique', 'premium', 'basic', 'lite'];
 export interface CompanyOption {
   id: string;
   name: string;
-  default_discount_rate: number;
   sub_companies: { id: string; name: string }[];
 }
 
@@ -45,6 +44,7 @@ export interface PriceRow {
   media: Media;
   tier: Tier;
   unit_price: number;
+  list_price: number;
 }
 
 interface Props {
@@ -60,19 +60,22 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
   const router = useRouter();
   const [saving, setSaving] = useState(false);
 
-  // 단가맵 (media,tier → unit_price)
+  // 단가맵 (media,tier → {unit_price, list_price})
   const priceMap = useMemo(() => {
-    const m = new Map<string, number>();
-    prices.forEach((p) => m.set(`${p.media}__${p.tier}`, p.unit_price));
+    const m = new Map<string, { unit_price: number; list_price: number }>();
+    prices.forEach((p) =>
+      m.set(`${p.media}__${p.tier}`, { unit_price: p.unit_price, list_price: p.list_price }),
+    );
     return m;
   }, [prices]);
 
   // 12 행 itemKeys (단가 표시용)
   const itemKeys = useMemo(() => {
-    const out: { media: Media; tier: Tier; unit_price: number }[] = [];
+    const out: { media: Media; tier: Tier; unit_price: number; list_price: number }[] = [];
     for (const media of MEDIA_ORDER) {
       for (const tier of TIER_ORDER) {
-        out.push({ media, tier, unit_price: priceMap.get(`${media}__${tier}`) ?? 0 });
+        const p = priceMap.get(`${media}__${tier}`) ?? { unit_price: 0, list_price: 0 };
+        out.push({ media, tier, unit_price: p.unit_price, list_price: p.list_price });
       }
     }
     return out;
@@ -87,6 +90,7 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
       tier: k.tier,
       quantity: itemByKey.get(`${k.media}__${k.tier}`)?.quantity ?? 0,
       unit_price: k.unit_price,
+      list_price: k.list_price,
     }));
     return { ...defaultValues, items: items12 };
   }, [defaultValues, itemKeys]);
@@ -96,37 +100,31 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
     defaultValues: normalizedDefaults,
   });
 
-  // 거래처가 바뀌면 default_discount_rate 자동 갱신 (사용자가 명시 변경하지 않은 경우)
+  // 거래처가 바뀌면 sub_company 클리어 (할인율은 더 이상 거래처별 아님)
   const companyId = useWatch({ control: form.control, name: 'company_id' });
   const selectedCompany = companies.find((c) => c.id === companyId);
 
   useEffect(() => {
     if (!selectedCompany) return;
-    // 거래처 변경 시 기본 할인율 자동 적용 (기존값이 0이거나 직전 거래처 기본값과 동일하면)
-    const cur = form.getValues('discount_rate');
-    if (cur === 0 || cur == null) {
-      form.setValue('discount_rate', selectedCompany.default_discount_rate, {
-        shouldDirty: false,
-      });
-    }
-    // sub_company가 현재 선택이 거래처에 속하지 않으면 클리어
     const curSub = form.getValues('sub_company_id');
     if (curSub && !selectedCompany.sub_companies.find((s) => s.id === curSub)) {
       form.setValue('sub_company_id', null);
     }
   }, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 합계 미리보기
+  // 합계 미리보기 — 임계값 기반 할인 자동
   const items = useWatch({ control: form.control, name: 'items' });
   const addonFee = useWatch({ control: form.control, name: 'addon_fee' }) ?? 0;
-  const discountRate = useWatch({ control: form.control, name: 'discount_rate' }) ?? 0;
   const fixedAdjust = useWatch({ control: form.control, name: 'fixed_adjust' }) ?? 0;
   const variableAdjust = useWatch({ control: form.control, name: 'variable_adjust' }) ?? 0;
 
   const calc = computeQuote(
-    (items ?? []).map((i) => ({ quantity: Number(i?.quantity ?? 0), unit_price: Number(i?.unit_price ?? 0) })),
+    (items ?? []).map((i) => ({
+      quantity: Number(i?.quantity ?? 0),
+      unit_price: Number(i?.unit_price ?? 0),
+      list_price: Number(i?.list_price ?? 0),
+    })),
     Number(addonFee || 0),
-    Number(discountRate || 0),
     Number(fixedAdjust || 0),
     Number(variableAdjust || 0),
   );
@@ -134,14 +132,17 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
   async function onSubmit(values: QuoteInput) {
     setSaving(true);
     try {
-      // 정규화: items 중 quantity > 0 만 남기고 unit_price를 priceMap 으로 재주입
+      // 정규화: unit_price/list_price 를 priceMap 으로 재주입
       const cleaned: QuoteInput = {
         ...values,
-        items: values.items
-          .map((i) => ({
+        items: values.items.map((i) => {
+          const p = priceMap.get(`${i.media}__${i.tier}`);
+          return {
             ...i,
-            unit_price: priceMap.get(`${i.media}__${i.tier}`) ?? i.unit_price,
-          })),
+            unit_price: p?.unit_price ?? i.unit_price,
+            list_price: p?.list_price ?? i.list_price,
+          };
+        }),
       };
 
       if (mode === 'create') {
@@ -268,23 +269,13 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
         <Card>
           <CardContent className="p-6 space-y-4">
             <h2 className="text-sm font-semibold text-gray-900">금액 조정</h2>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
                 <Label className="text-xs">부가서비스 (원)</Label>
                 <Input
                   type="number"
                   step={100}
                   {...form.register('addon_fee', { valueAsNumber: true })}
-                />
-              </div>
-              <div>
-                <Label className="text-xs">할인율 (0~1)</Label>
-                <Input
-                  type="number"
-                  step={0.01}
-                  min={0}
-                  max={1}
-                  {...form.register('discount_rate', { valueAsNumber: true })}
                 />
               </div>
               <div>
@@ -304,6 +295,9 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
                 />
               </div>
             </div>
+            <p className="text-[11px] text-gray-500">
+              ※ 할인은 견적 금액 정책에 따라 자동 결정됩니다 (공시가 합계 ≥ 100,000원 시 할인가 적용).
+            </p>
           </CardContent>
         </Card>
 
@@ -350,8 +344,11 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
         {/* 최종 합계 미리보기 */}
         <Card className="bg-gray-900 text-white">
           <CardContent className="p-6 grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
-            <Summary label="기본가" value={calc.baseAmount} />
-            <Summary label="할인적용" value={calc.discounted} muted />
+            <Summary label="공시가 합계" value={calc.listSum} muted />
+            <Summary
+              label={calc.discountApplied ? '할인 적용 후 기본가' : '기본가 (공시가 적용)'}
+              value={calc.baseAmount}
+            />
             <Summary label="+ 조정" value={calc.adjusted} muted />
             <Summary label="VAT (10%)" value={calc.vatAmount} muted />
             <Summary label="견적가 (VAT 포함)" value={calc.totalAmount} emphasis />

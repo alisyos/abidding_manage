@@ -5,6 +5,7 @@ import { useFormContext, useWatch } from 'react-hook-form';
 import { MEDIA_LABEL, TIER_LABEL, type Media, type Tier } from '@/lib/supabase/types';
 import { formatKRW } from '@/lib/format/currency';
 import { Input } from '@/components/ui/input';
+import { DISCOUNT_THRESHOLD } from '@/lib/quotes/calculator';
 import type { PriceKey } from '@/lib/quotes/pricing';
 import type { QuoteInput } from '@/lib/validation/quote';
 
@@ -14,7 +15,8 @@ const TIER_ORDER: Tier[] = ['unique', 'premium', 'basic', 'lite'];
 interface ItemKey {
   media: Media;
   tier: Tier;
-  unit_price: number;
+  unit_price: number;   // 할인가
+  list_price: number;   // 공시가
 }
 
 interface Props {
@@ -25,13 +27,12 @@ interface Props {
 /**
  * 3×4 매트릭스 견적 품목 그리드.
  * - 부모 폼의 `items[*]` 를 useWatch 로 관찰하여 실시간 줄합계/총합 계산.
- * - 단가는 prop으로 받은 itemKeys 의 unit_price (스냅샷).
+ * - 신규 정책: 공시가 기준 합계 ≥ 100,000원 → 할인가 적용
  */
 export function QuoteItemsGrid({ itemKeys }: Props) {
   const form = useFormContext<QuoteInput>();
   const items = useWatch({ control: form.control, name: 'items' });
   const addonFee = useWatch({ control: form.control, name: 'addon_fee' }) ?? 0;
-  const discountRate = useWatch({ control: form.control, name: 'discount_rate' }) ?? 0;
 
   // (media,tier) → idx 매핑
   const indexByKey = useMemo(() => {
@@ -44,14 +45,25 @@ export function QuoteItemsGrid({ itemKeys }: Props) {
     return indexByKey.get(`${media}__${tier}` as PriceKey) ?? -1;
   }
 
+  // 공시가 기준 합계 → 임계값 판정
+  const listSum = (items ?? []).reduce((sum, it, i) => {
+    const qty = Number(it?.quantity ?? 0);
+    const lp = Number(itemKeys[i]?.list_price ?? 0);
+    return sum + qty * lp;
+  }, 0);
+  const discountApplied = listSum >= DISCOUNT_THRESHOLD;
+
+  // 줄합계 (적용 단가 기준)
   const lineTotals: number[] = (items ?? []).map((it, i) => {
     const qty = Number(it?.quantity ?? 0);
-    const up = Number(itemKeys[i]?.unit_price ?? 0);
+    const up = discountApplied
+      ? Number(itemKeys[i]?.unit_price ?? 0)
+      : Number(itemKeys[i]?.list_price ?? 0);
     return qty * up;
   });
   const itemsSum = lineTotals.reduce((a, b) => a + b, 0);
   const baseAmount = itemsSum + Number(addonFee || 0);
-  const discounted = baseAmount * (1 - Number(discountRate || 0));
+  const savings = discountApplied ? listSum - itemsSum : 0;
 
   return (
     <div className="space-y-4">
@@ -83,6 +95,7 @@ export function QuoteItemsGrid({ itemKeys }: Props) {
                   </td>
                   {TIER_ORDER.map((tier) => {
                     const idx = getIdx(media, tier);
+                    const listPrice = itemKeys[idx]?.list_price ?? 0;
                     const unitPrice = itemKeys[idx]?.unit_price ?? 0;
                     const lineTotal = lineTotals[idx] ?? 0;
                     return (
@@ -97,7 +110,8 @@ export function QuoteItemsGrid({ itemKeys }: Props) {
                           className="h-8 w-full text-right tabular-nums"
                         />
                         <div className="mt-0.5 text-[10px] text-gray-400 text-right tabular-nums">
-                          단가 {formatKRW(unitPrice)} · 합 {formatKRW(lineTotal)}
+                          공시 {formatKRW(listPrice)} / 할인 {formatKRW(unitPrice)}
+                          <br />합 {formatKRW(lineTotal)}
                         </div>
                       </td>
                     );
@@ -112,12 +126,33 @@ export function QuoteItemsGrid({ itemKeys }: Props) {
         </table>
       </div>
 
+      {/* 할인 적용 여부 안내 */}
+      <div
+        className={`rounded-md px-3 py-2 text-xs ${
+          discountApplied
+            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+            : 'bg-amber-50 text-amber-800 border border-amber-200'
+        }`}
+      >
+        {discountApplied ? (
+          <>
+            ✅ 할인가 적용 — 공시가 합계 {formatKRW(listSum)} ≥ {formatKRW(DISCOUNT_THRESHOLD)}{' '}
+            (절약 {formatKRW(savings)})
+          </>
+        ) : (
+          <>
+            ℹ️ 공시가 적용 — 공시가 합계 {formatKRW(listSum)} 가 임계값{' '}
+            {formatKRW(DISCOUNT_THRESHOLD)} 미만. 수량을 늘리면 할인가로 자동 전환됩니다.
+          </>
+        )}
+      </div>
+
       {/* 합계 요약 */}
       <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-        <SummaryCell label="품목 합계" value={itemsSum} />
+        <SummaryCell label="공시가 합계" value={listSum} />
+        <SummaryCell label="품목 적용 합계" value={itemsSum} />
         <SummaryCell label="부가서비스" value={Number(addonFee || 0)} />
-        <SummaryCell label="기본가 (할인전)" value={baseAmount} />
-        <SummaryCell label="할인 적용 후" value={discounted} muted />
+        <SummaryCell label="기본가 (소계)" value={baseAmount} />
       </div>
     </div>
   );

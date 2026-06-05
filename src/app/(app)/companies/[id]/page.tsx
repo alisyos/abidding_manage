@@ -7,7 +7,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createClient } from '@/lib/supabase/server';
 import { ACCOUNT_TYPE_LABEL } from '@/lib/supabase/types';
-import { formatPercent } from '@/lib/format/currency';
 import { StatusBadge } from '../_components/status-badge';
 
 interface PageProps {
@@ -49,7 +48,6 @@ export default async function CompanyDetailPage({ params }: PageProps) {
     no: number | null;
     name: string;
     account_type: 'advertiser' | 'agency';
-    default_discount_rate: number;
     user_database: string | null;
     user_agency_id: string | null;
     url: string | null;
@@ -67,7 +65,7 @@ export default async function CompanyDetailPage({ params }: PageProps) {
     <div>
       <PageHeader
         title={data.name}
-        description={`${ACCOUNT_TYPE_LABEL[data.account_type as 'advertiser' | 'agency']} · 기본 할인율 ${formatPercent(Number(data.default_discount_rate ?? 0))}`}
+        description={ACCOUNT_TYPE_LABEL[data.account_type as 'advertiser' | 'agency']}
         actions={
           <Button asChild>
             <Link href={`/companies/${data.id}/edit`}>

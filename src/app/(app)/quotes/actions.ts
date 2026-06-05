@@ -69,11 +69,14 @@ export async function createQuote(
     return { ok: false, error: (e as Error).message };
   }
 
-  // 금액 계산
+  // 금액 계산 — 임계값 기반 할인 자동 결정
   const calc = computeQuote(
-    input.items.map((i) => ({ quantity: i.quantity, unit_price: i.unit_price })),
+    input.items.map((i) => ({
+      quantity: i.quantity,
+      unit_price: i.unit_price,
+      list_price: i.list_price,
+    })),
     input.addon_fee,
-    input.discount_rate,
     input.fixed_adjust,
     input.variable_adjust,
   );
@@ -92,7 +95,6 @@ export async function createQuote(
       status: 'draft',
       service_start: input.service_start,
       service_end: input.service_end,
-      discount_rate: input.discount_rate,
       addon_fee: input.addon_fee,
       variable_adjust: input.variable_adjust,
       fixed_adjust: input.fixed_adjust,
@@ -113,14 +115,14 @@ export async function createQuote(
     return { ok: false, error: `견적 생성 실패: ${insErr?.message}` };
   }
 
-  // quote_items - quantity > 0 만 저장
+  // quote_items — quantity > 0 만 저장. unit_price는 적용된 단가(할인/공시)로 저장
   const itemsToInsert = input.items
     .map((i, idx) => ({
       quote_id: insRow.id,
       media: i.media,
       tier: i.tier,
       quantity: i.quantity,
-      unit_price: i.unit_price,
+      unit_price: calc.discountApplied ? i.unit_price : i.list_price,
       line_total: calc.lineTotals[idx] ?? 0,
     }))
     .filter((i) => i.quantity > 0);
@@ -150,9 +152,12 @@ export async function updateQuote(
   const supabase = createClient();
 
   const calc = computeQuote(
-    input.items.map((i) => ({ quantity: i.quantity, unit_price: i.unit_price })),
+    input.items.map((i) => ({
+      quantity: i.quantity,
+      unit_price: i.unit_price,
+      list_price: i.list_price,
+    })),
     input.addon_fee,
-    input.discount_rate,
     input.fixed_adjust,
     input.variable_adjust,
   );
@@ -164,7 +169,6 @@ export async function updateQuote(
       sub_company_id: input.sub_company_id ?? null,
       service_start: input.service_start,
       service_end: input.service_end,
-      discount_rate: input.discount_rate,
       addon_fee: input.addon_fee,
       variable_adjust: input.variable_adjust,
       fixed_adjust: input.fixed_adjust,
@@ -190,7 +194,7 @@ export async function updateQuote(
       media: i.media,
       tier: i.tier,
       quantity: i.quantity,
-      unit_price: i.unit_price,
+      unit_price: calc.discountApplied ? i.unit_price : i.list_price,
       line_total: calc.lineTotals[idx] ?? 0,
     }))
     .filter((i) => i.quantity > 0);
@@ -347,7 +351,6 @@ export async function bulkCreateQuotes(
     company_id: string;
     sub_company_id: string | null;
     service_start: string;
-    discount_rate: number;
     addon_fee: number;
     variable_adjust: number;
     fixed_adjust: number;
@@ -367,7 +370,7 @@ export async function bulkCreateQuotes(
   const { data: sourceQuotesRaw, error: sErr } = await supabase
     .from('quotes')
     .select(
-      'id, quote_no, company_id, sub_company_id, service_start, discount_rate, addon_fee, variable_adjust, fixed_adjust, bank_account, payment_method, tax_invoice_type, notes, companies(name)',
+      'id, quote_no, company_id, sub_company_id, service_start, addon_fee, variable_adjust, fixed_adjust, bank_account, payment_method, tax_invoice_type, notes, companies(name)',
     )
     .in('id', input.source_quote_ids);
   if (sErr) return { ok: false, error: `소스 견적 조회 실패: ${sErr.message}` };
@@ -413,7 +416,7 @@ export async function bulkCreateQuotes(
       // 신규 quote_no 발급
       const newQuoteNo = await generateQuoteNo(supabase, input.target_service_start);
 
-      // 항목 재구성 (현재 단가 적용)
+      // 항목 재구성 (현재 단가 적용 — 할인가 + 공시가 둘 다)
       const srcItems = itemsByQuote.get(src.id) ?? [];
       const newItems = srcItems
         .filter((i) => i.quantity > 0)
@@ -424,14 +427,18 @@ export async function bulkCreateQuotes(
             tier: i.tier,
             quantity: i.quantity,
             unit_price: Number(product?.unit_price ?? 0),
+            list_price: Number(product?.list_price ?? 0),
           };
         });
 
-      // 금액 재계산
+      // 금액 재계산 — 임계값 기반 할인 자동 결정
       const calc = computeQuote(
-        newItems.map((i) => ({ quantity: i.quantity, unit_price: i.unit_price })),
+        newItems.map((i) => ({
+          quantity: i.quantity,
+          unit_price: i.unit_price,
+          list_price: i.list_price,
+        })),
         Number(src.addon_fee ?? 0),
-        Number(src.discount_rate ?? 0),
         Number(src.fixed_adjust ?? 0),
         Number(src.variable_adjust ?? 0),
       );
@@ -446,7 +453,6 @@ export async function bulkCreateQuotes(
           status: 'draft',
           service_start: input.target_service_start,
           service_end: input.target_service_end,
-          discount_rate: src.discount_rate,
           addon_fee: src.addon_fee,
           variable_adjust: src.variable_adjust,
           fixed_adjust: src.fixed_adjust,
@@ -471,14 +477,14 @@ export async function bulkCreateQuotes(
         continue;
       }
 
-      // quote_items insert
+      // quote_items insert — 적용된 단가(할인/공시)로 저장
       if (newItems.length > 0) {
         const itemRows = newItems.map((i, idx) => ({
           quote_id: insRow.id,
           media: i.media,
           tier: i.tier,
           quantity: i.quantity,
-          unit_price: i.unit_price,
+          unit_price: calc.discountApplied ? i.unit_price : i.list_price,
           line_total: calc.lineTotals[idx] ?? 0,
         }));
         await supabase.from('quote_items').insert(itemRows);
