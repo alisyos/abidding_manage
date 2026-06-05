@@ -6,6 +6,7 @@ import { sendAdjustmentEmailSchema } from '@/lib/validation/adjustment';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 /**
  * 조정 안내 메일 발송. 견적 상태는 변경하지 않는다.

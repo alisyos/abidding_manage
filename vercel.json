@@ -1,12 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["icn1"],
-  "functions": {
-    "src/app/api/quotes/[id]/send/route.ts": { "maxDuration": 30 },
-    "src/app/api/quotes/bulk-send/route.ts": { "maxDuration": 60 },
-    "src/app/api/sales/export/route.ts": { "maxDuration": 30 },
-    "src/app/api/sales/import/route.ts": { "maxDuration": 60 },
-    "src/app/api/companies/import/route.ts": { "maxDuration": 60 },
-    "src/app/api/adjustments/[id]/send/route.ts": { "maxDuration": 30 }
-  }
+  "regions": ["icn1"]
 }

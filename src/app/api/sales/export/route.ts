@@ -6,6 +6,7 @@ import type { Media, Tier, QuoteStatus } from '@/lib/supabase/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
 /**
  * 월매출 xlsx 다운로드.

@@ -19,6 +19,7 @@ import type {
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 /**
  * 일괄 견적 메일 발송 — SSE 진행률 송출.

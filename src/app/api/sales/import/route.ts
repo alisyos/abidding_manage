@@ -14,6 +14,7 @@ import type { QuoteStatus } from '@/lib/supabase/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 /**
  * 입금 일괄 업로드.

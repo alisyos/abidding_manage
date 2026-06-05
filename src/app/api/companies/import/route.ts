@@ -21,6 +21,7 @@ import { revalidatePath } from 'next/cache';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 function validateSection<T>(
   rows: unknown[],
