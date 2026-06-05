@@ -143,6 +143,17 @@ export function QuotePreview({ quote, sender, company, subCompany, primaryContac
               <Cell className="text-right">{formatKRW(quote.variable_adjust)}</Cell>
             </tr>
           )}
+          {(() => {
+            const extra =
+              Math.round(Number(quote.base_amount) * Number(quote.extra_discount_rate ?? 0)) +
+              Number(quote.extra_discount_amount ?? 0);
+            return extra > 0 ? (
+              <tr>
+                <Cell label>추가 할인{quote.extra_discount_note ? ` (${quote.extra_discount_note})` : ''}</Cell>
+                <Cell className="text-right text-rose-600">−{formatKRW(extra)}</Cell>
+              </tr>
+            ) : null;
+          })()}
           <tr>
             <Cell label>기본가 (VAT 미포함)</Cell>
             <Cell className="text-right">{formatKRW(quote.base_amount)}</Cell>

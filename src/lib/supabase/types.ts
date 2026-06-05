@@ -115,6 +115,12 @@ export interface Quote {
   addon_fee: number;
   variable_adjust: number;
   fixed_adjust: number;
+  /** 추가 할인 비율 (0~1). baseAmount(=itemsSum + addonFee)에 곱해 차감 */
+  extra_discount_rate: number;
+  /** 추가 할인 금액 (원). rate와 합산 */
+  extra_discount_amount: number;
+  /** 추가 할인 사유/메모 */
+  extra_discount_note: string | null;
   base_amount: number;
   vat_amount: number;
   total_amount: number;

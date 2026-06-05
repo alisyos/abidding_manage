@@ -28,6 +28,9 @@ export default async function EditQuotePage({ params }: PageProps) {
     addon_fee: number;
     variable_adjust: number;
     fixed_adjust: number;
+    extra_discount_rate: number;
+    extra_discount_amount: number;
+    extra_discount_note: string | null;
     bank_account: string | null;
     payment_method: string | null;
     tax_invoice_type: TaxInvoiceType | null;
@@ -44,7 +47,7 @@ export default async function EditQuotePage({ params }: PageProps) {
     supabase
       .from('quotes')
       .select(
-        'id, quote_no, company_id, sub_company_id, service_start, service_end, addon_fee, variable_adjust, fixed_adjust, bank_account, payment_method, tax_invoice_type, notes',
+        'id, quote_no, company_id, sub_company_id, service_start, service_end, addon_fee, variable_adjust, fixed_adjust, extra_discount_rate, extra_discount_amount, extra_discount_note, bank_account, payment_method, tax_invoice_type, notes',
       )
       .eq('id', params.id)
       .single(),
@@ -92,6 +95,9 @@ export default async function EditQuotePage({ params }: PageProps) {
     addon_fee: Number(q.addon_fee ?? 0),
     variable_adjust: Number(q.variable_adjust ?? 0),
     fixed_adjust: Number(q.fixed_adjust ?? 0),
+    extra_discount_rate: Number(q.extra_discount_rate ?? 0),
+    extra_discount_amount: Number(q.extra_discount_amount ?? 0),
+    extra_discount_note: q.extra_discount_note ?? '',
     bank_account: q.bank_account ?? '',
     payment_method: q.payment_method ?? '',
     tax_invoice_type: q.tax_invoice_type,

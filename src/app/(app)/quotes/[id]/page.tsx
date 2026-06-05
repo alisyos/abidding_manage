@@ -59,6 +59,9 @@ export default async function QuoteDetailPage({ params }: PageProps) {
     addon_fee: number;
     fixed_adjust: number;
     variable_adjust: number;
+    extra_discount_rate: number;
+    extra_discount_amount: number;
+    extra_discount_note: string | null;
     base_amount: number;
     vat_amount: number;
     total_amount: number;
@@ -76,7 +79,9 @@ export default async function QuoteDetailPage({ params }: PageProps) {
     .from('quotes')
     .select(
       `id, quote_no, status, service_start, service_end, addon_fee,
-       fixed_adjust, variable_adjust, base_amount, vat_amount, total_amount,
+       fixed_adjust, variable_adjust,
+       extra_discount_rate, extra_discount_amount, extra_discount_note,
+       base_amount, vat_amount, total_amount,
        bank_account, payment_method, tax_invoice_type, notes,
        sent_at, won_at, paid_at,
        companies(id, name), sub_companies(id, name)`,
@@ -199,7 +204,32 @@ export default async function QuoteDetailPage({ params }: PageProps) {
               <InfoRow label="부가서비스" value={formatKRW(q.addon_fee)} mono />
               <InfoRow label="고정 조정가" value={formatKRW(q.fixed_adjust)} mono />
               <InfoRow label="변동 조정가" value={formatKRW(q.variable_adjust)} mono />
+              {(Number(q.extra_discount_rate) > 0 || Number(q.extra_discount_amount) > 0) && (
+                <InfoRow
+                  label="추가 할인"
+                  value={
+                    <span className="text-rose-600">
+                      −{formatKRW(
+                        Math.round(Number(q.base_amount) * Number(q.extra_discount_rate)) +
+                          Number(q.extra_discount_amount),
+                      )}
+                      {Number(q.extra_discount_rate) > 0 &&
+                        ` (${(Number(q.extra_discount_rate) * 100).toFixed(1)}%${
+                          Number(q.extra_discount_amount) > 0
+                            ? ` + ${formatKRW(q.extra_discount_amount)}`
+                            : ''
+                        })`}
+                    </span>
+                  }
+                />
+              )}
               <InfoRow label="VAT (10%)" value={formatKRW(q.vat_amount)} mono />
+              {q.extra_discount_note && (
+                <div className="col-span-full">
+                  <dt className="text-xs text-gray-500">추가 할인 사유</dt>
+                  <dd className="mt-1 text-sm text-gray-700">{q.extra_discount_note}</dd>
+                </div>
+              )}
               <div className="col-span-full pt-3 border-t border-gray-100">
                 <dt className="text-xs text-gray-500">견적가 (VAT 포함)</dt>
                 <dd className="mt-1 text-2xl font-bold text-gray-900 tabular-nums">

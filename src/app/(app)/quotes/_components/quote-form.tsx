@@ -112,11 +112,14 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
     }
   }, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 합계 미리보기 — 임계값 기반 할인 자동
+  // 합계 미리보기 — 임계값 기반 할인 자동 + 추가 할인
   const items = useWatch({ control: form.control, name: 'items' });
   const addonFee = useWatch({ control: form.control, name: 'addon_fee' }) ?? 0;
   const fixedAdjust = useWatch({ control: form.control, name: 'fixed_adjust' }) ?? 0;
   const variableAdjust = useWatch({ control: form.control, name: 'variable_adjust' }) ?? 0;
+  const extraDiscountRate = useWatch({ control: form.control, name: 'extra_discount_rate' }) ?? 0;
+  const extraDiscountAmount =
+    useWatch({ control: form.control, name: 'extra_discount_amount' }) ?? 0;
 
   const calc = computeQuote(
     (items ?? []).map((i) => ({
@@ -127,6 +130,8 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
     Number(addonFee || 0),
     Number(fixedAdjust || 0),
     Number(variableAdjust || 0),
+    Number(extraDiscountRate || 0),
+    Number(extraDiscountAmount || 0),
   );
 
   async function onSubmit(values: QuoteInput) {
@@ -295,8 +300,46 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
                 />
               </div>
             </div>
+
+            <div className="border-t border-gray-100 pt-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-semibold text-gray-700">추가 할인 (견적별)</h3>
+                <span className="text-[10px] text-gray-400">
+                  표준 할인과 별도로 적용되며 두 값 모두 채우면 합산됩니다.
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs">추가 할인율 (0~1)</Label>
+                  <Input
+                    type="number"
+                    step={0.01}
+                    min={0}
+                    max={1}
+                    {...form.register('extra_discount_rate', { valueAsNumber: true })}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">추가 할인액 (원)</Label>
+                  <Input
+                    type="number"
+                    step={100}
+                    min={0}
+                    {...form.register('extra_discount_amount', { valueAsNumber: true })}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">추가 할인 사유</Label>
+                  <Input
+                    placeholder="예: 통계 무료 제공"
+                    {...form.register('extra_discount_note')}
+                  />
+                </div>
+              </div>
+            </div>
+
             <p className="text-[11px] text-gray-500">
-              ※ 할인은 견적 금액 정책에 따라 자동 결정됩니다 (공시가 합계 ≥ 100,000원 시 할인가 적용).
+              ※ 표준 할인은 공시가 합계 ≥ 100,000원 시 자동 적용됩니다.
             </p>
           </CardContent>
         </Card>
@@ -343,13 +386,14 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
 
         {/* 최종 합계 미리보기 */}
         <Card className="bg-gray-900 text-white">
-          <CardContent className="p-6 grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+          <CardContent className="p-6 grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
             <Summary label="공시가 합계" value={calc.listSum} muted />
             <Summary
               label={calc.discountApplied ? '할인 적용 후 기본가' : '기본가 (공시가 적용)'}
               value={calc.baseAmount}
             />
-            <Summary label="+ 조정" value={calc.adjusted} muted />
+            <Summary label="− 추가할인" value={-calc.extraDiscount} muted />
+            <Summary label="+ 조정 후" value={calc.adjusted} muted />
             <Summary label="VAT (10%)" value={calc.vatAmount} muted />
             <Summary label="견적가 (VAT 포함)" value={calc.totalAmount} emphasis />
           </CardContent>

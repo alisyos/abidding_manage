@@ -69,7 +69,7 @@ export async function createQuote(
     return { ok: false, error: (e as Error).message };
   }
 
-  // 금액 계산 — 임계값 기반 할인 자동 결정
+  // 금액 계산 — 임계값 기반 할인 자동 결정 + 추가 할인
   const calc = computeQuote(
     input.items.map((i) => ({
       quantity: i.quantity,
@@ -79,6 +79,8 @@ export async function createQuote(
     input.addon_fee,
     input.fixed_adjust,
     input.variable_adjust,
+    input.extra_discount_rate,
+    input.extra_discount_amount,
   );
 
   // created_by
@@ -98,6 +100,9 @@ export async function createQuote(
       addon_fee: input.addon_fee,
       variable_adjust: input.variable_adjust,
       fixed_adjust: input.fixed_adjust,
+      extra_discount_rate: input.extra_discount_rate,
+      extra_discount_amount: input.extra_discount_amount,
+      extra_discount_note: nullify(input.extra_discount_note),
       base_amount: round2(calc.baseAmount),
       vat_amount: calc.vatAmount,
       total_amount: round2(calc.totalAmount),
@@ -160,6 +165,8 @@ export async function updateQuote(
     input.addon_fee,
     input.fixed_adjust,
     input.variable_adjust,
+    input.extra_discount_rate,
+    input.extra_discount_amount,
   );
 
   const { error: uErr } = await supabase
@@ -172,6 +179,9 @@ export async function updateQuote(
       addon_fee: input.addon_fee,
       variable_adjust: input.variable_adjust,
       fixed_adjust: input.fixed_adjust,
+      extra_discount_rate: input.extra_discount_rate,
+      extra_discount_amount: input.extra_discount_amount,
+      extra_discount_note: nullify(input.extra_discount_note),
       base_amount: round2(calc.baseAmount),
       vat_amount: calc.vatAmount,
       total_amount: round2(calc.totalAmount),
@@ -354,6 +364,9 @@ export async function bulkCreateQuotes(
     addon_fee: number;
     variable_adjust: number;
     fixed_adjust: number;
+    extra_discount_rate: number;
+    extra_discount_amount: number;
+    extra_discount_note: string | null;
     bank_account: string | null;
     payment_method: string | null;
     tax_invoice_type: 'receipt' | 'claim' | null;
@@ -370,7 +383,7 @@ export async function bulkCreateQuotes(
   const { data: sourceQuotesRaw, error: sErr } = await supabase
     .from('quotes')
     .select(
-      'id, quote_no, company_id, sub_company_id, service_start, addon_fee, variable_adjust, fixed_adjust, bank_account, payment_method, tax_invoice_type, notes, companies(name)',
+      'id, quote_no, company_id, sub_company_id, service_start, addon_fee, variable_adjust, fixed_adjust, extra_discount_rate, extra_discount_amount, extra_discount_note, bank_account, payment_method, tax_invoice_type, notes, companies(name)',
     )
     .in('id', input.source_quote_ids);
   if (sErr) return { ok: false, error: `소스 견적 조회 실패: ${sErr.message}` };
@@ -431,7 +444,7 @@ export async function bulkCreateQuotes(
           };
         });
 
-      // 금액 재계산 — 임계값 기반 할인 자동 결정
+      // 금액 재계산 — 임계값 기반 할인 자동 결정 + 추가 할인 복제
       const calc = computeQuote(
         newItems.map((i) => ({
           quantity: i.quantity,
@@ -441,6 +454,8 @@ export async function bulkCreateQuotes(
         Number(src.addon_fee ?? 0),
         Number(src.fixed_adjust ?? 0),
         Number(src.variable_adjust ?? 0),
+        Number(src.extra_discount_rate ?? 0),
+        Number(src.extra_discount_amount ?? 0),
       );
 
       // quotes insert
@@ -456,6 +471,9 @@ export async function bulkCreateQuotes(
           addon_fee: src.addon_fee,
           variable_adjust: src.variable_adjust,
           fixed_adjust: src.fixed_adjust,
+          extra_discount_rate: src.extra_discount_rate ?? 0,
+          extra_discount_amount: src.extra_discount_amount ?? 0,
+          extra_discount_note: src.extra_discount_note ?? null,
           base_amount: round2(calc.baseAmount),
           vat_amount: calc.vatAmount,
           total_amount: round2(calc.totalAmount),

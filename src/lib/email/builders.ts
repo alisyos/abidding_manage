@@ -202,6 +202,20 @@ export function buildQuoteItemsTableHtml(
     </tr>`;
   }).join('');
 
+  // 추가 할인 행 (적용액이 0이면 생략)
+  const extraDiscount =
+    Math.round(Number(quote.base_amount) * Number(quote.extra_discount_rate ?? 0)) +
+    Number(quote.extra_discount_amount ?? 0);
+  const extraNote = quote.extra_discount_note ? ` (${quote.extra_discount_note})` : '';
+  const extraRow =
+    extraDiscount > 0
+      ? `
+    <tr>
+      <td colspan="8" style="padding:6px 8px; text-align:right; color:#be123c;">추가 할인${extraNote}</td>
+      <td colspan="2" style="padding:6px 8px; text-align:right; color:#be123c;">−${extraDiscount.toLocaleString('ko-KR')}</td>
+    </tr>`
+      : '';
+
   const footerRow = `
     <tr>
       <td colspan="10" style="padding:6px 8px; text-align:right; color:#666; font-size:12px;">* 견적가 : VAT 포함 입금액</td>
@@ -209,7 +223,7 @@ export function buildQuoteItemsTableHtml(
 
   return `<table border="1" cellpadding="0" cellspacing="0" style="border-collapse:collapse; border:1px solid #d1d5db; font-size:13px; color:#171717;">
     <thead>${headerRow}</thead>
-    <tbody>${bodyRows}${footerRow}</tbody>
+    <tbody>${bodyRows}${extraRow}${footerRow}</tbody>
   </table>`;
 }
 

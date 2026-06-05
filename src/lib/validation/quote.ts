@@ -19,6 +19,16 @@ export const quoteInputSchema = z
     addon_fee: z.number().nonnegative().default(0),
     variable_adjust: z.number().default(0),
     fixed_adjust: z.number().default(0),
+    extra_discount_rate: z
+      .number({ invalid_type_error: '숫자로 입력해주세요' })
+      .min(0, '0 이상')
+      .max(1, '1 이하 (예: 0.10 = 10%)')
+      .default(0),
+    extra_discount_amount: z
+      .number({ invalid_type_error: '숫자로 입력해주세요' })
+      .nonnegative('0 이상')
+      .default(0),
+    extra_discount_note: optString,
     bank_account: optString,
     payment_method: optString,
     tax_invoice_type: z.enum(['receipt', 'claim']).nullable().optional(),

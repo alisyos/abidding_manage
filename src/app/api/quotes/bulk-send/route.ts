@@ -121,7 +121,7 @@ export async function POST(req: Request) {
           const { data: qRaw, error: qErr } = await supabase
             .from('quotes')
             .select(
-              'id, quote_no, company_id, sub_company_id, status, service_start, service_end, addon_fee, variable_adjust, fixed_adjust, base_amount, vat_amount, total_amount, sender_snapshot, bank_account, payment_method, tax_invoice_type, notes, sent_at, won_at, paid_at, created_at, updated_at, created_by, companies(id, name), sub_companies(id, name)',
+              'id, quote_no, company_id, sub_company_id, status, service_start, service_end, addon_fee, variable_adjust, fixed_adjust, extra_discount_rate, extra_discount_amount, extra_discount_note, base_amount, vat_amount, total_amount, sender_snapshot, bank_account, payment_method, tax_invoice_type, notes, sent_at, won_at, paid_at, created_at, updated_at, created_by, companies(id, name), sub_companies(id, name)',
             )
             .eq('id', id)
             .single();
@@ -159,6 +159,9 @@ export async function POST(req: Request) {
             addon_fee: Number(qRow.addon_fee),
             variable_adjust: Number(qRow.variable_adjust),
             fixed_adjust: Number(qRow.fixed_adjust),
+            extra_discount_rate: Number(qRow.extra_discount_rate ?? 0),
+            extra_discount_amount: Number(qRow.extra_discount_amount ?? 0),
+            extra_discount_note: qRow.extra_discount_note ?? null,
             base_amount: Number(qRow.base_amount),
             vat_amount: Number(qRow.vat_amount),
             total_amount: Number(qRow.total_amount),

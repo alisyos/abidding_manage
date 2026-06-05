@@ -32,6 +32,7 @@ export default async function QuotePreviewPage({ params }: PageProps) {
       .select(
         `id, quote_no, company_id, sub_company_id, status, service_start, service_end,
          addon_fee, variable_adjust, fixed_adjust,
+         extra_discount_rate, extra_discount_amount, extra_discount_note,
          base_amount, vat_amount, total_amount, sender_snapshot,
          bank_account, payment_method, tax_invoice_type, notes,
          sent_at, won_at, paid_at, created_at, updated_at, created_by,
@@ -83,6 +84,9 @@ export default async function QuotePreviewPage({ params }: PageProps) {
     addon_fee: Number(qRaw.addon_fee),
     variable_adjust: Number(qRaw.variable_adjust),
     fixed_adjust: Number(qRaw.fixed_adjust),
+    extra_discount_rate: Number(qRaw.extra_discount_rate ?? 0),
+    extra_discount_amount: Number(qRaw.extra_discount_amount ?? 0),
+    extra_discount_note: qRaw.extra_discount_note ?? null,
     base_amount: Number(qRaw.base_amount),
     vat_amount: Number(qRaw.vat_amount),
     total_amount: Number(qRaw.total_amount),

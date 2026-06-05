@@ -1,11 +1,14 @@
 /**
- * 견적가 계산 — 단일 진실 소스 (임계값 기반 할인 정책).
+ * 견적가 계산 — 단일 진실 소스 (임계값 기반 할인 + 추가 할인).
  *
- * 신규 정책 (DMP 에이비딩 소개서 기준):
+ * 가격 정책 (DMP 에이비딩 소개서):
  *   - 매체×등급별로 공시가(list_price) / 할인가(unit_price) 2종 존재
- *   - 공시가 기준 상품 합계 ≥ 100,000원이면 → 할인가 적용
- *   - 그렇지 않으면 → 공시가 적용
- *   - 임계값 합산 범위: quote_items 의 line_total 만 (addon_fee, fixed/variable_adjust 제외)
+ *   - 공시가 기준 상품 합계 ≥ 100,000원이면 → 할인가 적용 (표준 할인)
+ *
+ * 추가 할인 (견적별):
+ *   - extra_discount_rate (0~1): baseAmount × rate
+ *   - extra_discount_amount (원)
+ *   - 둘 다 적용 (합산)
  *
  * 공식:
  *   listSum         = Σ (quantity × list_price)
@@ -14,7 +17,8 @@
  *   lineTotal_i     = quantity_i × appliedUnit_i
  *   itemsSum        = Σ lineTotal_i
  *   baseAmount      = itemsSum + addonFee
- *   adjusted        = baseAmount + fixedAdjust + variableAdjust
+ *   extraDiscount   = round(baseAmount × extraDiscountRate) + extraDiscountAmount
+ *   adjusted        = baseAmount + fixedAdjust + variableAdjust − extraDiscount
  *   vatAmount       = round(adjusted × 0.1)
  *   totalAmount     = adjusted + vatAmount
  */
@@ -40,10 +44,12 @@ export interface QuoteCalcResult {
   listSum: number;
   /** 할인가 기준 합계 (참고용) */
   discountSum: number;
-  /** 할인 적용 여부 */
+  /** 표준 할인 적용 여부 */
   discountApplied: boolean;
-  /** 절약액 = listSum - itemsSum (할인 적용 시), 미적용 시 0 */
+  /** 표준 할인 절약액 = listSum - itemsSum (할인 적용 시), 미적용 시 0 */
   savings: number;
+  /** 추가 할인 적용액 (양수) */
+  extraDiscount: number;
 }
 
 export function computeQuote(
@@ -51,6 +57,8 @@ export function computeQuote(
   addonFee: number,
   fixedAdjust: number,
   variableAdjust: number,
+  extraDiscountRate: number = 0,
+  extraDiscountAmount: number = 0,
 ): QuoteCalcResult {
   const listSum = items.reduce(
     (a, i) => a + (i.quantity || 0) * (i.list_price || 0),
@@ -66,7 +74,11 @@ export function computeQuote(
   );
   const itemsSum = lineTotals.reduce((a, b) => a + b, 0);
   const baseAmount = itemsSum + (addonFee || 0);
-  const adjusted = baseAmount + (fixedAdjust || 0) + (variableAdjust || 0);
+
+  const extraDiscount =
+    Math.round(baseAmount * (extraDiscountRate || 0)) + (extraDiscountAmount || 0);
+
+  const adjusted = baseAmount + (fixedAdjust || 0) + (variableAdjust || 0) - extraDiscount;
   const vatAmount = Math.round(adjusted * 0.1);
   const totalAmount = adjusted + vatAmount;
   const savings = discountApplied ? listSum - itemsSum : 0;
@@ -82,5 +94,6 @@ export function computeQuote(
     discountSum,
     discountApplied,
     savings,
+    extraDiscount,
   };
 }

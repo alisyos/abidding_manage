@@ -205,6 +205,31 @@ console.log(`📥 raw 시트 전체 유효 행: ${allRows.length}건`);
 const monthRows = allRows.filter((r) => r.usageStart >= monthStart && r.usageStart <= monthEnd);
 console.log(`📅 ${opts.month} 범위 행: ${monthRows.length}건\n`);
 
+// ───────────────────────────────────────────────────────────────
+// 초안 시트의 추가 할인 정보 파싱 (B열=세부거래처 / AQ열=항목 / AR열=금액)
+// ───────────────────────────────────────────────────────────────
+const draftSheet = workbook.Sheets['초안'];
+/** [{ subName, note, amount }] — amount는 양수(음수→양수 변환). 사용 후 mark됨. */
+const draftExtras = [];
+if (draftSheet) {
+  const draftAOA = sheetToAOA(draftSheet);
+  for (const row of draftAOA) {
+    if (!row) continue;
+    const subName = cellStr(row[1]);    // B열 = 세부거래처
+    const note = cellStr(row[42]);      // AQ열 = 항목
+    const amount = Number(row[43]);     // AR열 = 금액 (음수)
+    if (!subName || !note) continue;
+    if (!Number.isFinite(amount) || amount === 0) {
+      // 금액 0 (정성적 메모만) — 메모는 보존하되 할인액 0
+      draftExtras.push({ subName, note, amount: 0, used: false });
+      continue;
+    }
+    if (amount > 0) continue; // 잘못된 데이터
+    draftExtras.push({ subName, note, amount: Math.abs(amount), used: false });
+  }
+}
+console.log(`💸 초안 시트 추가할인 후보: ${draftExtras.length}건\n`);
+
 if (monthRows.length === 0) {
   console.log('대상 월에 데이터가 없습니다. 종료.');
   process.exit(0);
@@ -311,6 +336,18 @@ for (const [, g] of groups) {
       list_price: p.list_price,
     };
   });
+
+  // 추가 할인 매핑 — 초안 시트에서 sub_name 일치 + 사용 안 된 첫 항목
+  // (같은 sub_name이 여러 번 등장하면 used flag 로 1:1 greedy 매칭)
+  const extraMatch = draftExtras.find((d) => d.subName === g.subName && !d.used);
+  let extraAmount = 0;
+  let extraNote = null;
+  if (extraMatch) {
+    extraMatch.used = true;
+    extraAmount = extraMatch.amount;
+    extraNote = extraMatch.note;
+  }
+
   const calc = computeQuote(
     itemsWithPrice.map((i) => ({
       quantity: i.quantity,
@@ -318,6 +355,8 @@ for (const [, g] of groups) {
       list_price: i.list_price,
     })),
     0, 0, 0,
+    0,            // extra_discount_rate = 0 (금액만 사용)
+    extraAmount,
   );
 
   // 중복 검사
@@ -332,6 +371,7 @@ for (const [, g] of groups) {
 
   const payload = {
     g, company, sub, itemsWithPrice, calc, hasDup,
+    extraAmount, extraNote,
     existingQuoteNo: hasDup ? existing[0].quote_no : null,
     existingId: hasDup ? existing[0].id : null,
   };
@@ -366,13 +406,27 @@ if (result.skipNoSub.length > 0) {
 }
 
 if (dryRun) {
+  // 추가 할인 매핑 결과 요약
+  const extraApplied = [...result.willCreate, ...result.willOverwrite].filter((p) => p.extraAmount > 0);
+  const extraUnmatched = draftExtras.filter((d) => !d.used && d.amount > 0);
+  console.log(`💸 추가 할인 매칭: ${extraApplied.length}건 적용 / ${extraUnmatched.length}건 매칭 실패`);
+  if (extraUnmatched.length > 0) {
+    console.log('   매칭 실패 (sub_name이 6월 견적 그룹과 불일치):');
+    for (const u of extraUnmatched.slice(0, 10)) {
+      console.log(`   - ${u.subName} / ${u.note} / -${u.amount.toLocaleString()}`);
+    }
+  }
+  console.log();
+
   console.log('💡 미리보기 샘플 (최대 5건):');
   for (const p of [...result.willCreate, ...result.willOverwrite].slice(0, 5)) {
     const tag = p.hasDup ? `♻️ [${p.existingQuoteNo}]` : '✅ [신규]';
     const policy = p.calc.discountApplied
       ? `할인가 적용 (공시 ${p.calc.listSum.toLocaleString()})`
       : `공시가 적용 (공시 ${p.calc.listSum.toLocaleString()} < 100,000)`;
-    console.log(`  ${tag} ${p.g.companyName} / ${p.g.subName}`);
+    const extra =
+      p.extraAmount > 0 ? ` 💸 -${p.extraAmount.toLocaleString()} (${p.extraNote})` : '';
+    console.log(`  ${tag} ${p.g.companyName} / ${p.g.subName}${extra}`);
     console.log(`     기간 ${p.g.serviceStart} ~ ${p.g.serviceEnd}, ${policy}`);
     console.log(`     품목 ${p.itemsWithPrice.length}종, base=${round2(p.calc.baseAmount).toLocaleString()}, total=${round2(p.calc.totalAmount).toLocaleString()}`);
   }
@@ -411,6 +465,9 @@ for (const p of [...result.willOverwrite, ...result.willCreate]) {
         addon_fee: 0,
         variable_adjust: 0,
         fixed_adjust: 0,
+        extra_discount_rate: 0,
+        extra_discount_amount: p.extraAmount,
+        extra_discount_note: p.extraNote,
         base_amount: round2(p.calc.baseAmount),
         vat_amount: p.calc.vatAmount,
         total_amount: round2(p.calc.totalAmount),
@@ -440,7 +497,8 @@ for (const p of [...result.willOverwrite, ...result.willCreate]) {
     else created++;
 
     const tag = p.hasDup ? '♻️' : '✅';
-    console.log(`  ${tag} ${quoteNo}  ${p.g.companyName} / ${p.g.subName}  total=${round2(p.calc.totalAmount).toLocaleString()}`);
+    const extraTag = p.extraAmount > 0 ? ` 💸-${p.extraAmount.toLocaleString()}` : '';
+    console.log(`  ${tag} ${quoteNo}  ${p.g.companyName} / ${p.g.subName}  total=${round2(p.calc.totalAmount).toLocaleString()}${extraTag}`);
   } catch (e) {
     result.errors.push({ key: `${p.g.companyName} / ${p.g.subName}`, error: e.message });
     console.error(`  ✗ ${p.g.companyName} / ${p.g.subName}: ${e.message}`);

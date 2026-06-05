@@ -46,12 +46,14 @@ export async function createAdjustment(
     addon_fee: number;
     fixed_adjust: number;
     variable_adjust: number;
+    extra_discount_rate: number;
+    extra_discount_amount: number;
     companies: { account_type: 'advertiser' | 'agency' };
   };
   const { data: qRaw, error: qErr } = await supabase
     .from('quotes')
     .select(
-      'id, company_id, sub_company_id, status, service_start, service_end, addon_fee, fixed_adjust, variable_adjust, companies(account_type)',
+      'id, company_id, sub_company_id, status, service_start, service_end, addon_fee, fixed_adjust, variable_adjust, extra_discount_rate, extra_discount_amount, companies(account_type)',
     )
     .eq('id', input.quote_id)
     .single();
@@ -123,6 +125,8 @@ export async function createAdjustment(
     Number(q.addon_fee ?? 0),
     Number(q.fixed_adjust ?? 0),
     newVariableAdjust,
+    Number(q.extra_discount_rate ?? 0),
+    Number(q.extra_discount_amount ?? 0),
   );
 
   const { error: updErr } = await supabase

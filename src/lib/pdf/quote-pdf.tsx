@@ -331,6 +331,17 @@ export function QuotePdfDocument(props: QuotePdfProps) {
           {Number(quote.variable_adjust) !== 0 && (
             <TotalRow label="변동 조정가" value={formatKRW(quote.variable_adjust)} />
           )}
+          {(() => {
+            const extra =
+              Math.round(Number(quote.base_amount) * Number(quote.extra_discount_rate ?? 0)) +
+              Number(quote.extra_discount_amount ?? 0);
+            return extra > 0 ? (
+              <TotalRow
+                label={`추가 할인${quote.extra_discount_note ? ` (${quote.extra_discount_note})` : ''}`}
+                value={`−${formatKRW(extra)}`}
+              />
+            ) : null;
+          })()}
           <TotalRow label="기본가 (VAT 미포함)" value={formatKRW(quote.base_amount)} />
           <TotalRow label="VAT (10%)" value={formatKRW(quote.vat_amount)} />
           <View style={styles.totalsRowEmphasis}>
