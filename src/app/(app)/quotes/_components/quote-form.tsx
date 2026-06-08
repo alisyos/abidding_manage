@@ -4,13 +4,14 @@ import { FormProvider, useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
 import {
   Select,
@@ -33,6 +34,20 @@ import { createQuote, updateQuote } from '../actions';
 
 const MEDIA_ORDER: Media[] = ['K', 'S', 'M'];
 const TIER_ORDER: Tier[] = ['unique', 'premium', 'basic', 'lite'];
+
+/** 'YYYY-MM' → 그 달 말일 'YYYY-MM-DD' */
+function lastDayOfMonth(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  if (!y || !m) return `${month}-28`;
+  const last = new Date(y, m, 0).getDate();
+  return `${month}-${String(last).padStart(2, '0')}`;
+}
+
+/** service_start가 1일 & service_end가 같은 달 말일이면 월 단위로 간주 */
+function isFullMonth(start: string, end: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return false;
+  return start.endsWith('-01') && end === lastDayOfMonth(start.slice(0, 7));
+}
 
 export interface CompanyOption {
   id: string;
@@ -59,6 +74,9 @@ interface Props {
 export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, prices }: Props) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [periodMode, setPeriodMode] = useState<'month' | 'custom'>(() =>
+    isFullMonth(defaultValues.service_start, defaultValues.service_end) ? 'month' : 'custom',
+  );
 
   // 단가맵 (media,tier → {unit_price, list_price})
   const priceMap = useMemo(() => {
@@ -133,6 +151,79 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
     Number(extraDiscountRate || 0),
     Number(extraDiscountAmount || 0),
   );
+
+  // ── 개별 신규 견적: 이전 달 사용량 + 조정 delta(조정 후 수량) 불러오기 ──
+  const subCompanyId = useWatch({ control: form.control, name: 'sub_company_id' });
+  const serviceStart = useWatch({ control: form.control, name: 'service_start' });
+  const [prefilling, setPrefilling] = useState(false);
+  const autoLoadedKey = useRef<string | null>(null);
+
+  async function loadPreviousUsage(silent = false) {
+    const company_id = form.getValues('company_id');
+    const service_start = form.getValues('service_start');
+    if (!company_id || !service_start) {
+      if (!silent) toast.info('거래처와 서비스 시작일을 먼저 선택하세요');
+      return;
+    }
+    const sub = form.getValues('sub_company_id');
+    setPrefilling(true);
+    try {
+      const params = new URLSearchParams({ company_id, service_start });
+      if (sub) params.set('sub_company_id', sub);
+      const res = await fetch(`/api/quotes/prefill?${params.toString()}`);
+      const data = (await res.json()) as {
+        source: { quote_no: string | null; service_start: string } | null;
+        items: { media: Media; tier: Tier; quantity: number }[];
+        adjust: {
+          addon_fee: number;
+          fixed_adjust: number;
+          variable_adjust: number;
+          extra_discount_rate: number;
+          extra_discount_amount: number;
+          extra_discount_note: string;
+        } | null;
+      };
+      if (!res.ok || !data.source) {
+        if (!silent) toast.info('이전 달 견적이 없습니다');
+        return;
+      }
+      const qtyByKey = new Map(data.items.map((i) => [`${i.media}__${i.tier}`, i.quantity]));
+      const items12 = itemKeys.map((k) => ({
+        media: k.media,
+        tier: k.tier,
+        quantity: qtyByKey.get(`${k.media}__${k.tier}`) ?? 0,
+        unit_price: k.unit_price,
+        list_price: k.list_price,
+      }));
+      form.setValue('items', items12, { shouldValidate: true, shouldDirty: true });
+      // 금액 조정/할인 필드도 이전 견적에서 복제 (일괄 생성과 동일)
+      if (data.adjust) {
+        const opt = { shouldValidate: true, shouldDirty: true } as const;
+        form.setValue('addon_fee', data.adjust.addon_fee, opt);
+        form.setValue('fixed_adjust', data.adjust.fixed_adjust, opt);
+        form.setValue('variable_adjust', data.adjust.variable_adjust, opt);
+        form.setValue('extra_discount_rate', data.adjust.extra_discount_rate, opt);
+        form.setValue('extra_discount_amount', data.adjust.extra_discount_amount, opt);
+        form.setValue('extra_discount_note', data.adjust.extra_discount_note, opt);
+      }
+      const label = data.source.service_start.slice(0, 7).replace('-', '.');
+      toast.success(`${label} 견적 기준 조정 후 수량을 불러왔습니다`);
+    } catch {
+      if (!silent) toast.error('이전 달 사용량 불러오기 실패');
+    } finally {
+      setPrefilling(false);
+    }
+  }
+
+  // 자동 제안: create 모드에서 거래처/세부/서비스 월이 바뀔 때마다 해당 월 기준 이전 달 수량 재로드
+  useEffect(() => {
+    if (mode !== 'create') return;
+    if (!companyId || !serviceStart) return;
+    const key = `${companyId}__${subCompanyId ?? ''}__${serviceStart.slice(0, 7)}`;
+    if (autoLoadedKey.current === key) return;
+    autoLoadedKey.current = key;
+    void loadPreviousUsage(true);
+  }, [companyId, subCompanyId, serviceStart]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function onSubmit(values: QuoteInput) {
     setSaving(true);
@@ -239,23 +330,60 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
                 </Select>
               </div>
 
-              <div>
-                <Label className="text-xs">서비스 시작일 *</Label>
-                <Input type="date" {...form.register('service_start')} />
-                {form.formState.errors.service_start && (
-                  <p className="mt-1 text-xs text-red-500">
-                    {form.formState.errors.service_start.message}
-                  </p>
-                )}
-              </div>
+              <div className="md:col-span-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">서비스 기간 *</Label>
+                  <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+                    <Checkbox
+                      checked={periodMode === 'custom'}
+                      onCheckedChange={(v) => setPeriodMode(v ? 'custom' : 'month')}
+                    />
+                    직접 입력 (일 단위)
+                  </label>
+                </div>
 
-              <div>
-                <Label className="text-xs">서비스 종료일 *</Label>
-                <Input type="date" {...form.register('service_end')} />
-                {form.formState.errors.service_end && (
-                  <p className="mt-1 text-xs text-red-500">
-                    {form.formState.errors.service_end.message}
-                  </p>
+                {periodMode === 'month' ? (
+                  <div className="mt-1 flex items-center gap-3">
+                    <Input
+                      type="month"
+                      className="w-[180px]"
+                      value={(form.watch('service_start') || '').slice(0, 7)}
+                      onChange={(e) => {
+                        const m = e.target.value;
+                        if (!m) return;
+                        form.setValue('service_start', `${m}-01`, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                        form.setValue('service_end', lastDayOfMonth(m), {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        });
+                      }}
+                    />
+                    <span className="text-xs text-gray-500 tabular-nums">
+                      {form.watch('service_start')} ~ {form.watch('service_end')}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="mt-1 grid grid-cols-2 gap-4">
+                    <div>
+                      <Input type="date" {...form.register('service_start')} />
+                      {form.formState.errors.service_start && (
+                        <p className="mt-1 text-xs text-red-500">
+                          {form.formState.errors.service_start.message}
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <Input type="date" {...form.register('service_end')} />
+                      {form.formState.errors.service_end && (
+                        <p className="mt-1 text-xs text-red-500">
+                          {form.formState.errors.service_end.message}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
@@ -265,7 +393,20 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
         {/* 견적 항목 */}
         <Card>
           <CardContent className="p-6 space-y-4">
-            <h2 className="text-sm font-semibold text-gray-900">견적 항목</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-gray-900">견적 항목</h2>
+              {mode === 'create' && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => loadPreviousUsage(false)}
+                  disabled={prefilling}
+                >
+                  {prefilling ? '불러오는 중…' : '이전 달 사용량 불러오기 (조정 반영)'}
+                </Button>
+              )}
+            </div>
             <QuoteItemsGrid itemKeys={itemKeys} />
           </CardContent>
         </Card>

@@ -77,21 +77,37 @@ export default async function SendAdjustmentPage({ params }: PageProps) {
     contacts = (data ?? []) as unknown as CompanyContact[];
   }
 
-  // QuoteAdjustment / Quote 정규화
-  const adjustment: QuoteAdjustment = {
-    id: adj.id,
-    quote_id: adj.quote_id,
-    adjustment_date: adj.adjustment_date,
-    account_type: adj.account_type,
-    media: adj.media as Media,
-    delta_unique: adj.delta_unique,
-    delta_premium: adj.delta_premium,
-    delta_basic: adj.delta_basic,
-    delta_lite: adj.delta_lite,
-    pre_adjust_amount: Number(adj.pre_adjust_amount ?? 0),
-    reason: adj.reason,
-    created_at: adj.created_at,
+  // 같은 견적 + 조정일자의 매체별 행 전체 (다중 매체 → 한 통으로 묶기)
+  const { data: siblingRaw } = await supabase
+    .from('quote_adjustments')
+    .select(
+      'id, quote_id, adjustment_date, account_type, media, delta_unique, delta_premium, delta_basic, delta_lite, pre_adjust_amount, reason, created_at',
+    )
+    .eq('quote_id', adj.quote_id)
+    .eq('adjustment_date', adj.adjustment_date)
+    .order('created_at', { ascending: true });
+
+  type SiblingRow = Omit<QuoteAdjustment, 'media' | 'pre_adjust_amount'> & {
+    media: string;
+    pre_adjust_amount: number | null;
   };
+  const siblings = (siblingRaw ?? []) as unknown as SiblingRow[];
+  const sourceRows = siblings.length > 0 ? siblings : [adj as unknown as SiblingRow];
+
+  const adjustments: QuoteAdjustment[] = sourceRows.map((r) => ({
+    id: r.id,
+    quote_id: r.quote_id,
+    adjustment_date: r.adjustment_date,
+    account_type: r.account_type,
+    media: r.media as Media,
+    delta_unique: r.delta_unique,
+    delta_premium: r.delta_premium,
+    delta_basic: r.delta_basic,
+    delta_lite: r.delta_lite,
+    pre_adjust_amount: Number(r.pre_adjust_amount ?? 0),
+    reason: r.reason,
+    created_at: r.created_at,
+  }));
 
   const quote: Quote = {
     id: adj.quotes.id,
@@ -124,7 +140,7 @@ export default async function SendAdjustmentPage({ params }: PageProps) {
   };
 
   const built = buildAdjustmentEmail({
-    adjustment,
+    adjustments,
     quote,
     sender,
     company: adj.quotes.companies ?? { name: '-' },

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { QuoteStatus } from '@/lib/supabase/types';
 import { firstDayOfMonth } from './period';
+import { computeSalesEconomics } from '@/lib/sales/economics';
 
 export interface PaidPatch {
   payment_date: string;
@@ -82,16 +83,19 @@ export async function applyTransition(
   const wasRevenue = from === 'won' || from === 'paid';
 
   if (becameRevenue && !wasRevenue) {
-    // 신규 매출 생성
+    // 신규 매출 생성 — 매출 경제값은 단일 소스(computeSalesEconomics)로 산출.
+    // 조정(quote_adjustments)이 이미 있으면 일할 계산액이 함께 반영된다.
+    const econ = await computeSalesEconomics(supabase, q.id);
     const { error } = await supabase.from('sales_records').upsert(
       {
         quote_id: q.id,
         company_id: q.company_id,
         sub_company_id: q.sub_company_id,
         revenue_month: firstDayOfMonth(q.service_start),
-        base_amount: q.base_amount,
-        variable_adjust: q.variable_adjust,
-        total_amount: q.total_amount,
+        base_amount: econ?.base_amount ?? q.base_amount,
+        variable_adjust: econ?.variable_adjust ?? q.variable_adjust,
+        vat_amount: econ?.vat_amount ?? 0,
+        total_amount: econ?.total_amount ?? q.total_amount,
         payment_date: to === 'paid' ? ctx.paidPatch?.payment_date ?? null : null,
         tax_invoice_no: to === 'paid' ? ctx.paidPatch?.tax_invoice_no ?? null : null,
         tax_invoice_issued_at:

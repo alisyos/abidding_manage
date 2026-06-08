@@ -35,9 +35,15 @@ export async function GET(req: Request) {
     base_amount: number;
     variable_adjust: number;
     total_amount: number;
+    vat_amount: number;
     payment_date: string | null;
     tax_invoice_no: string | null;
-    quotes: { quote_no: string | null; status: QuoteStatus } | null;
+    quotes: {
+      quote_no: string | null;
+      status: QuoteStatus;
+      extra_discount_rate: number;
+      extra_discount_amount: number;
+    } | null;
     companies: { name: string } | null;
     sub_companies: { name: string } | null;
   };
@@ -45,9 +51,9 @@ export async function GET(req: Request) {
   const { data: salesRaw, error } = await supabase
     .from('sales_records')
     .select(
-      `id, quote_id, company_id, sub_company_id, base_amount, variable_adjust, total_amount,
+      `id, quote_id, company_id, sub_company_id, base_amount, variable_adjust, total_amount, vat_amount,
        payment_date, tax_invoice_no,
-       quotes(quote_no, status), companies(name), sub_companies(name)`,
+       quotes(quote_no, status, extra_discount_rate, extra_discount_amount), companies(name), sub_companies(name)`,
     )
     .eq('revenue_month', `${month}-01`);
 
@@ -57,39 +63,78 @@ export async function GET(req: Request) {
 
   const sales = (salesRaw ?? []) as unknown as SaleRow[];
 
-  // 관련 quote_items 일괄 조회
+  // 관련 quote_items + 조정 delta 일괄 조회
   const quoteIds = sales.map((s) => s.quote_id);
   type ItemRow = { quote_id: string; media: Media; tier: Tier; quantity: number };
+  type AdjRow = {
+    quote_id: string;
+    media: Media;
+    delta_unique: number;
+    delta_premium: number;
+    delta_basic: number;
+    delta_lite: number;
+  };
   const items: ItemRow[] = [];
+  const adjRows: AdjRow[] = [];
   if (quoteIds.length > 0) {
-    const { data: itemRows } = await supabase
-      .from('quote_items')
-      .select('quote_id, media, tier, quantity')
-      .in('quote_id', quoteIds);
-    items.push(...((itemRows ?? []) as unknown as ItemRow[]));
+    const [itemsRes, adjRes] = await Promise.all([
+      supabase
+        .from('quote_items')
+        .select('quote_id, media, tier, quantity')
+        .in('quote_id', quoteIds),
+      supabase
+        .from('quote_adjustments')
+        .select('quote_id, media, delta_unique, delta_premium, delta_basic, delta_lite')
+        .in('quote_id', quoteIds),
+    ]);
+    items.push(...((itemsRes.data ?? []) as unknown as ItemRow[]));
+    adjRows.push(...((adjRes.data ?? []) as unknown as AdjRow[]));
   }
 
-  const records: PivotSalesRecord[] = sales.map((s) => ({
-    id: s.id,
-    quote_id: s.quote_id,
-    quote_no: s.quotes?.quote_no ?? null,
-    quote_status: (s.quotes?.status ?? 'won') as QuoteStatus,
-    company_id: s.company_id,
-    company_name: s.companies?.name ?? '-',
-    sub_company_id: s.sub_company_id,
-    sub_company_name: s.sub_companies?.name ?? null,
-    base_amount: Number(s.base_amount ?? 0),
-    variable_adjust: Number(s.variable_adjust ?? 0),
-    total_amount: Number(s.total_amount ?? 0),
-    payment_date: s.payment_date,
-    tax_invoice_no: s.tax_invoice_no,
-  }));
+  const records: PivotSalesRecord[] = sales.map((s) => {
+    const base = Number(s.base_amount ?? 0);
+    const extraDiscount =
+      Math.round(base * Number(s.quotes?.extra_discount_rate ?? 0)) +
+      Number(s.quotes?.extra_discount_amount ?? 0);
+    return {
+      id: s.id,
+      quote_id: s.quote_id,
+      quote_no: s.quotes?.quote_no ?? null,
+      quote_status: (s.quotes?.status ?? 'won') as QuoteStatus,
+      company_id: s.company_id,
+      company_name: s.companies?.name ?? '-',
+      sub_company_id: s.sub_company_id,
+      sub_company_name: s.sub_companies?.name ?? null,
+      base_amount: base,
+      extra_discount: extraDiscount,
+      variable_adjust: Number(s.variable_adjust ?? 0),
+      total_amount: Number(s.total_amount ?? 0),
+      vat_amount: Number(s.vat_amount ?? 0),
+      payment_date: s.payment_date,
+      tax_invoice_no: s.tax_invoice_no,
+    };
+  });
   const pivotItems: PivotQuoteItem[] = items.map((i) => ({
     quote_id: i.quote_id,
     media: i.media,
     tier: i.tier,
     quantity: i.quantity,
   }));
+  // 조정 delta 를 (media,tier) 합성 항목으로 펼쳐 사용량 셀에 합산
+  const TIER_KEYS: Tier[] = ['unique', 'premium', 'basic', 'lite'];
+  for (const a of adjRows) {
+    const deltas: Record<Tier, number> = {
+      unique: Number(a.delta_unique ?? 0),
+      premium: Number(a.delta_premium ?? 0),
+      basic: Number(a.delta_basic ?? 0),
+      lite: Number(a.delta_lite ?? 0),
+    };
+    for (const tier of TIER_KEYS) {
+      if (deltas[tier] !== 0) {
+        pivotItems.push({ quote_id: a.quote_id, media: a.media, tier, quantity: deltas[tier] });
+      }
+    }
+  }
 
   const pivot = buildSalesPivot(records, pivotItems);
   const buf = buildSalesWorkbook(pivot, month);

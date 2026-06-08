@@ -242,7 +242,8 @@ function contactAddress(c: CompanyContact, companyName: string): string {
 // 조정 안내 메일 빌더
 // ───────────────────────────────────────────────────────────────
 interface BuildAdjustmentEmailArgs {
-  adjustment: QuoteAdjustment;
+  /** 같은 견적·조정일자의 매체별 조정 행 (다중 매체). 최소 1건. */
+  adjustments: QuoteAdjustment[];
   quote: Quote;
   sender: SenderProfile | Partial<SenderProfile>;
   company: { name: string };
@@ -253,7 +254,8 @@ interface BuildAdjustmentEmailArgs {
 const TIERS: Tier[] = ['unique', 'premium', 'basic', 'lite'];
 
 export function buildAdjustmentEmail(args: BuildAdjustmentEmailArgs): BuiltEmail {
-  const { adjustment, quote, sender, company, contacts, template } = args;
+  const { adjustments, quote, sender, company, contacts, template } = args;
+  const adjustment = adjustments[0];
 
   const sortedContacts = [...contacts].sort((a, b) => {
     if (a.role !== b.role) return a.role === 'primary' ? -1 : 1;
@@ -267,19 +269,27 @@ export function buildAdjustmentEmail(args: BuildAdjustmentEmailArgs): BuiltEmail
 
   const periodLabel = buildPeriodLabel(quote.service_start, quote.service_end);
 
-  // 조정 항목 — 0이 아닌 등급만
-  const deltaByTier: Record<Tier, number> = {
-    unique: adjustment.delta_unique,
-    premium: adjustment.delta_premium,
-    basic: adjustment.delta_basic,
-    lite: adjustment.delta_lite,
-  };
-  const items = TIERS.filter((t) => deltaByTier[t] !== 0).map((t) => ({
-    tier_label: TIER_LABEL[t],
-    delta: deltaByTier[t],
-  }));
+  // 조정 항목 — 모든 매체 행의 0이 아닌 등급 (매체 라벨 포함)
+  const items = adjustments.flatMap((adj) => {
+    const deltaByTier: Record<Tier, number> = {
+      unique: adj.delta_unique,
+      premium: adj.delta_premium,
+      basic: adj.delta_basic,
+      lite: adj.delta_lite,
+    };
+    return TIERS.filter((t) => deltaByTier[t] !== 0).map((t) => ({
+      tier_label: `${MEDIA_LABEL[adj.media as Media]} ${TIER_LABEL[t]}`,
+      delta: deltaByTier[t],
+    }));
+  });
 
-  const preAdjustAmount = Number(adjustment.pre_adjust_amount ?? 0);
+  // 변동 매체 라벨 목록
+  const mediaLabel = Array.from(new Set(adjustments.map((a) => MEDIA_LABEL[a.media as Media]))).join(
+    ', ',
+  );
+  // 총 정산액 (전 매체 합산)
+  const preAdjustAmount = adjustments.reduce((s, a) => s + Number(a.pre_adjust_amount ?? 0), 0);
+  const reason = adjustments.find((a) => a.reason)?.reason ?? '';
 
   const rendered = renderEmailTemplate(template, {
     period_label: periodLabel,
@@ -302,11 +312,11 @@ export function buildAdjustmentEmail(args: BuildAdjustmentEmailArgs): BuiltEmail
     },
     adjustment: {
       adjustment_date: adjustment.adjustment_date,
-      media_label: MEDIA_LABEL[adjustment.media as Media],
+      media_label: mediaLabel,
       items,
       pre_adjust_amount: formatKRW(preAdjustAmount),
       pre_adjust_amount_raw: preAdjustAmount,
-      reason: adjustment.reason ?? '',
+      reason,
     },
   });
 

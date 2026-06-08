@@ -70,20 +70,65 @@ export default async function NewAdjustmentPage({ searchParams }: PageProps) {
     itemsByQuote.set(it.quote_id, arr);
   }
 
-  const quotes: QuoteOption[] = quoteRows.map((q) => ({
-    id: q.id,
-    quote_no: q.quote_no,
-    company_name: q.companies?.name ?? '-',
-    sub_company_name: q.sub_companies?.name ?? null,
-    service_start: q.service_start,
-    service_end: q.service_end,
-    items: (itemsByQuote.get(q.id) ?? []).map((i) => ({
+  // 기존 조정 delta 합산 (견적별 조정 반영 후 현재 사용량 계산용)
+  type AdjRow = {
+    quote_id: string;
+    media: Media;
+    delta_unique: number;
+    delta_premium: number;
+    delta_basic: number;
+    delta_lite: number;
+  };
+  const adjByQuote = new Map<string, Record<string, number>>();
+  if (quoteIds.length > 0) {
+    const { data: adjRows } = await supabase
+      .from('quote_adjustments')
+      .select('quote_id, media, delta_unique, delta_premium, delta_basic, delta_lite')
+      .in('quote_id', quoteIds);
+    for (const a of (adjRows ?? []) as unknown as AdjRow[]) {
+      const m = adjByQuote.get(a.quote_id) ?? {};
+      const deltas: Record<Tier, number> = {
+        unique: a.delta_unique,
+        premium: a.delta_premium,
+        basic: a.delta_basic,
+        lite: a.delta_lite,
+      };
+      for (const t of TIER_ORDER) {
+        const k = `${a.media}__${t}`;
+        m[k] = (m[k] ?? 0) + Number(deltas[t] ?? 0);
+      }
+      adjByQuote.set(a.quote_id, m);
+    }
+  }
+
+  const quotes: QuoteOption[] = quoteRows.map((q) => {
+    const qItems = (itemsByQuote.get(q.id) ?? []).map((i) => ({
       media: i.media,
       tier: i.tier,
       quantity: Number(i.quantity),
       unit_price: Number(i.unit_price),
-    })),
-  }));
+    }));
+    // 조정 반영 후 현재 사용량 = 원본 + Σ 기존 조정 delta (0 floor)
+    const adjDeltas = adjByQuote.get(q.id) ?? {};
+    const currentQty: Record<string, number> = {};
+    for (const media of MEDIA_ORDER) {
+      for (const tier of TIER_ORDER) {
+        const k = `${media}__${tier}`;
+        const base = qItems.find((i) => i.media === media && i.tier === tier)?.quantity ?? 0;
+        currentQty[k] = Math.max(0, base + (adjDeltas[k] ?? 0));
+      }
+    }
+    return {
+      id: q.id,
+      quote_no: q.quote_no,
+      company_name: q.companies?.name ?? '-',
+      sub_company_name: q.sub_companies?.name ?? null,
+      service_start: q.service_start,
+      service_end: q.service_end,
+      items: qItems,
+      currentQty,
+    };
+  });
 
   const prices: PriceRow[] = [];
   for (const media of MEDIA_ORDER) {

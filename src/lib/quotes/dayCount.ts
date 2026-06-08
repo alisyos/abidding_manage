@@ -27,6 +27,9 @@ export interface ProRatedDeltaResult {
   lineDeltas: Record<Tier, number>;
 }
 
+/** 천원 단위 내림 (부호 무관 floor). 정산액을 항상 고객사에 유리하게 절사. */
+export const floorToThousand = (n: number): number => Math.floor(n / 1000) * 1000;
+
 export function calcProRatedDelta(input: ProRatedDeltaInput): ProRatedDeltaResult {
   const totalDays = daysBetween(input.serviceStart, input.serviceEnd) + 1;
   const remainingDaysRaw = daysBetween(input.adjustmentDate, input.serviceEnd) + 1;

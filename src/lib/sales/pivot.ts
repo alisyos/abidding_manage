@@ -23,8 +23,10 @@ export interface PivotSalesRecord {
   sub_company_id: string | null;
   sub_company_name: string | null;
   base_amount: number;
+  extra_discount: number;
   variable_adjust: number;
   total_amount: number;
+  vat_amount: number;
   payment_date: string | null;
   tax_invoice_no: string | null;
 }
@@ -48,16 +50,20 @@ export interface PivotRow {
   sub_company_name: string | null;
   cells: Record<CellKey, number>;     // 12개 셀, 0 디폴트
   base_amount: number;
+  extra_discount: number;
   variable_adjust: number;
   total_amount: number;
+  vat_amount: number;
   payment_date: string | null;
 }
 
 export interface PivotTotals {
   cells: Record<CellKey, number>;
   base_amount: number;
+  extra_discount: number;
   variable_adjust: number;
   total_amount: number;
+  vat_amount: number;
 }
 
 export interface PivotResult {
@@ -94,8 +100,10 @@ export function buildSalesPivot(
       sub_company_name: r.sub_company_name,
       cells,
       base_amount: Number(r.base_amount ?? 0),
+      extra_discount: Number(r.extra_discount ?? 0),
       variable_adjust: Number(r.variable_adjust ?? 0),
       total_amount: Number(r.total_amount ?? 0),
+      vat_amount: Number(r.vat_amount ?? 0),
       payment_date: r.payment_date,
     };
   });
@@ -113,14 +121,18 @@ export function buildSalesPivot(
   const totals: PivotTotals = {
     cells: makeEmptyCells(),
     base_amount: 0,
+    extra_discount: 0,
     variable_adjust: 0,
     total_amount: 0,
+    vat_amount: 0,
   };
   for (const r of rows) {
     for (const k of CELL_KEYS) totals.cells[k] += r.cells[k];
     totals.base_amount += r.base_amount;
+    totals.extra_discount += r.extra_discount;
     totals.variable_adjust += r.variable_adjust;
     totals.total_amount += r.total_amount;
+    totals.vat_amount += r.vat_amount;
   }
 
   return { rows, totals };

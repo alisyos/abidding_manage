@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Pencil, Send } from 'lucide-react';
+import { Pencil, Send, Trash2 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 import { DataTable } from '@/components/data-table';
@@ -21,7 +21,7 @@ import {
 import { QuoteStatusBadge } from '@/components/quote/quote-status-badge';
 import { formatKRW } from '@/lib/format/currency';
 import { QUOTE_STATUS_LABEL, type QuoteStatus } from '@/lib/supabase/types';
-import { bulkChangeStatus } from '../actions';
+import { bulkChangeStatus, deleteQuote, bulkDeleteQuotes } from '../actions';
 
 export interface QuotesRow {
   id: string;
@@ -153,10 +153,13 @@ export function QuotesTable({
             >
               <Send className="h-4 w-4" />
             </Link>
+            {(row.original.status === 'draft' || row.original.status === 'sent') && (
+              <QuoteDeleteButton id={row.original.id} quoteNo={row.original.quote_no} />
+            )}
           </div>
         ),
         enableSorting: false,
-        size: 60,
+        size: 80,
       },
     ],
     [],
@@ -226,8 +229,69 @@ export function QuotesTable({
           >
             {isPending ? '처리중...' : '일괄 변경'}
           </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={isPending}
+            onClick={() => runBulkDelete(selectedIds, clear)}
+          >
+            삭제
+          </Button>
         </>
       )}
     />
+  );
+
+  function runBulkDelete(selectedIds: string[], clear: () => void) {
+    if (
+      !confirm(
+        `${selectedIds.length}개 견적을 삭제하시겠습니까?\n` +
+          '임시저장/발송 견적만 삭제되며(수주/입금 제외), 되돌릴 수 없습니다.',
+      )
+    )
+      return;
+    startTransition(async () => {
+      const res = await bulkDeleteQuotes(selectedIds);
+      if (res.ok && res.data) {
+        toast.success(
+          `${res.data.success}건 삭제 완료${res.data.failed.length ? ` (제외/실패 ${res.data.failed.length}건)` : ''}`,
+        );
+        clear();
+        router.refresh();
+      } else {
+        toast.error(`삭제 실패: ${res.error}`);
+      }
+    });
+  }
+}
+
+function QuoteDeleteButton({ id, quoteNo }: { id: string; quoteNo: string | null }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  function onDelete(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!confirm(`견적 ${quoteNo ?? ''}을(를) 삭제하시겠습니까?\n되돌릴 수 없습니다.`)) return;
+    startTransition(async () => {
+      const res = await deleteQuote(id);
+      if (res.ok) {
+        toast.success('견적이 삭제되었습니다');
+        router.refresh();
+      } else {
+        toast.error(`삭제 실패: ${res.error}`);
+      }
+    });
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onDelete}
+      disabled={isPending}
+      className="inline-flex items-center text-gray-400 hover:text-red-600 disabled:opacity-50"
+      title="삭제"
+    >
+      <Trash2 className="h-4 w-4" />
+    </button>
   );
 }

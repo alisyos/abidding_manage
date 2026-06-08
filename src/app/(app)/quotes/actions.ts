@@ -20,6 +20,8 @@ import { generateQuoteNo } from '@/lib/quotes/quoteNo';
 import { fetchActivePriceMap, priceKey } from '@/lib/quotes/pricing';
 import { firstDayOfMonth } from '@/lib/quotes/period';
 import { applyTransition } from '@/lib/quotes/statusMachine';
+import { computeSalesEconomics } from '@/lib/sales/economics';
+import { fetchAdjustedQuantities, fetchAdjustmentAmountSums } from '@/lib/quotes/carryForward';
 import type {
   Media,
   QuoteStatus,
@@ -214,30 +216,30 @@ export async function updateQuote(
     if (iErr) return { ok: false, error: `품목 재저장 실패: ${iErr.message}` };
   }
 
-  // status >= 'sent' 이고 sales_records 가 있는 경우 service_start 변경 시 동기화
-  type QRow = {
-    status: QuoteStatus;
-    base_amount: number;
-    variable_adjust: number;
-    total_amount: number;
-  };
+  // won/paid 면 sales_records 동기화 (금액·기간 변경 반영).
+  // 매출 경제값은 단일 소스(computeSalesEconomics)로 산출 — 조정 일할액 포함.
+  type QRow = { status: QuoteStatus };
   const { data: postRaw } = await supabase
     .from('quotes')
-    .select('status, base_amount, variable_adjust, total_amount')
+    .select('status')
     .eq('id', id)
     .single();
   const post = postRaw as unknown as QRow | null;
 
   if (post && (post.status === 'won' || post.status === 'paid')) {
-    await supabase
-      .from('sales_records')
-      .update({
-        revenue_month: firstDayOfMonth(input.service_start),
-        base_amount: post.base_amount,
-        variable_adjust: post.variable_adjust,
-        total_amount: post.total_amount,
-      })
-      .eq('quote_id', id);
+    const econ = await computeSalesEconomics(supabase, id);
+    if (econ) {
+      await supabase
+        .from('sales_records')
+        .update({
+          revenue_month: firstDayOfMonth(input.service_start),
+          base_amount: econ.base_amount,
+          variable_adjust: econ.variable_adjust,
+          vat_amount: econ.vat_amount,
+          total_amount: econ.total_amount,
+        })
+        .eq('quote_id', id);
+    }
   }
 
   revalidatePath('/quotes');
@@ -292,6 +294,79 @@ export async function bulkChangeStatus(
     if (res.ok) success++;
     else failed.push(`${id}: ${res.error}`);
   }
+  revalidatePath('/quotes');
+  revalidatePath('/sales');
+  return { ok: true, data: { success, failed } };
+}
+
+// ───────────────────────────────────────────────────────────────
+// 견적 삭제 (draft/sent 만 허용 — won/paid는 매출 이력 보호)
+// ───────────────────────────────────────────────────────────────
+export async function deleteQuote(id: string): Promise<ActionResult> {
+  const supabase = createClient();
+
+  const { data: qRaw, error: qErr } = await supabase
+    .from('quotes')
+    .select('status')
+    .eq('id', id)
+    .single();
+  if (qErr || !qRaw) return { ok: false, error: '견적을 찾을 수 없습니다' };
+  const status = (qRaw as unknown as { status: QuoteStatus }).status;
+  if (status === 'won' || status === 'paid') {
+    return {
+      ok: false,
+      error: '수주/입금 견적은 삭제할 수 없습니다. 상태를 발송/임시저장으로 되돌린 뒤 삭제하세요.',
+    };
+  }
+
+  // FK on delete cascade: quote_items / quote_adjustments / quote_emails / sales_records 자동 삭제
+  const { error } = await supabase.from('quotes').delete().eq('id', id);
+  if (error) return { ok: false, error: `견적 삭제 실패: ${error.message}` };
+
+  revalidatePath('/quotes');
+  revalidatePath('/sales');
+  return { ok: true };
+}
+
+export async function bulkDeleteQuotes(
+  ids: string[],
+): Promise<ActionResult<{ success: number; failed: string[] }>> {
+  if (!ids.length) return { ok: true, data: { success: 0, failed: [] } };
+  const supabase = createClient();
+
+  // 상태 일괄 조회 — won/paid 제외
+  const { data: rows } = await supabase
+    .from('quotes')
+    .select('id, status, quote_no')
+    .in('id', ids);
+  const byId = new Map(
+    ((rows ?? []) as unknown as { id: string; status: QuoteStatus; quote_no: string | null }[]).map(
+      (r) => [r.id, r],
+    ),
+  );
+
+  let success = 0;
+  const failed: string[] = [];
+  const deletable: string[] = [];
+  for (const id of ids) {
+    const r = byId.get(id);
+    if (!r) {
+      failed.push(`${id}: 견적 없음`);
+      continue;
+    }
+    if (r.status === 'won' || r.status === 'paid') {
+      failed.push(`${r.quote_no ?? id}: 수주/입금 견적은 삭제 불가`);
+      continue;
+    }
+    deletable.push(id);
+  }
+
+  if (deletable.length) {
+    const { error } = await supabase.from('quotes').delete().in('id', deletable);
+    if (error) return { ok: false, error: `견적 삭제 실패: ${error.message}` };
+    success = deletable.length;
+  }
+
   revalidatePath('/quotes');
   revalidatePath('/sales');
   return { ok: true, data: { success, failed } };
@@ -373,13 +448,6 @@ export async function bulkCreateQuotes(
     notes: string | null;
     companies: { name: string };
   };
-  type SourceItem = {
-    quote_id: string;
-    media: Media;
-    tier: Tier;
-    quantity: number;
-  };
-
   const { data: sourceQuotesRaw, error: sErr } = await supabase
     .from('quotes')
     .select(
@@ -390,16 +458,10 @@ export async function bulkCreateQuotes(
 
   const sourceQuotes = (sourceQuotesRaw ?? []) as unknown as SourceQuote[];
 
-  const { data: sourceItemsRaw } = await supabase
-    .from('quote_items')
-    .select('quote_id, media, tier, quantity')
-    .in('quote_id', input.source_quote_ids);
-  const itemsByQuote = new Map<string, SourceItem[]>();
-  for (const it of (sourceItemsRaw ?? []) as unknown as SourceItem[]) {
-    const arr = itemsByQuote.get(it.quote_id) ?? [];
-    arr.push(it);
-    itemsByQuote.set(it.quote_id, arr);
-  }
+  // 조정 반영 수량 (이전달 quote_items + Σ 조정 delta) — 익월 정가 적용 기준
+  const adjustedByQuote = await fetchAdjustedQuantities(supabase, input.source_quote_ids);
+  // 이전 달 조정 정산액 합계 → 익월 견적 변동조정가로 이월(1회성)
+  const amountSums = await fetchAdjustmentAmountSums(supabase, input.source_quote_ids);
 
   const created: BulkCreateQuotesResult['created'] = [];
   const skipped: BulkCreateQuotesResult['skipped'] = [];
@@ -429,20 +491,24 @@ export async function bulkCreateQuotes(
       // 신규 quote_no 발급
       const newQuoteNo = await generateQuoteNo(supabase, input.target_service_start);
 
-      // 항목 재구성 (현재 단가 적용 — 할인가 + 공시가 둘 다)
-      const srcItems = itemsByQuote.get(src.id) ?? [];
-      const newItems = srcItems
-        .filter((i) => i.quantity > 0)
-        .map((i) => {
-          const product = priceMap.get(priceKey(i.media, i.tier));
+      // 항목 재구성 — 조정 반영 수량(이전달 + Σ delta) + 현재 단가(정가)
+      const adjMap = adjustedByQuote.get(src.id) ?? new Map<string, number>();
+      const newItems = Array.from(adjMap.entries())
+        .filter(([, qty]) => qty > 0)
+        .map(([key, qty]) => {
+          const [media, tier] = key.split('__') as [Media, Tier];
+          const product = priceMap.get(priceKey(media, tier));
           return {
-            media: i.media,
-            tier: i.tier,
-            quantity: i.quantity,
+            media,
+            tier,
+            quantity: qty,
             unit_price: Number(product?.unit_price ?? 0),
             list_price: Number(product?.list_price ?? 0),
           };
         });
+
+      // 익월 변동조정가 = 이전 달 조정 정산액 합계 (이전 견적 variable_adjust 필드는 미사용 — 영구 전파 방지)
+      const carriedVariableAdjust = amountSums.get(src.id) ?? 0;
 
       // 금액 재계산 — 임계값 기반 할인 자동 결정 + 추가 할인 복제
       const calc = computeQuote(
@@ -453,7 +519,7 @@ export async function bulkCreateQuotes(
         })),
         Number(src.addon_fee ?? 0),
         Number(src.fixed_adjust ?? 0),
-        Number(src.variable_adjust ?? 0),
+        carriedVariableAdjust,
         Number(src.extra_discount_rate ?? 0),
         Number(src.extra_discount_amount ?? 0),
       );
@@ -469,7 +535,7 @@ export async function bulkCreateQuotes(
           service_start: input.target_service_start,
           service_end: input.target_service_end,
           addon_fee: src.addon_fee,
-          variable_adjust: src.variable_adjust,
+          variable_adjust: carriedVariableAdjust,
           fixed_adjust: src.fixed_adjust,
           extra_discount_rate: src.extra_discount_rate ?? 0,
           extra_discount_amount: src.extra_discount_amount ?? 0,

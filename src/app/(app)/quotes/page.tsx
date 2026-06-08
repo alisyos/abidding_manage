@@ -33,7 +33,7 @@ export default async function QuotesPage({ searchParams }: PageProps) {
   let query = supabase
     .from('quotes')
     .select(
-      'id, quote_no, status, service_start, service_end, total_amount, companies(name), sub_companies(name)',
+      'id, quote_no, status, service_start, service_end, total_amount, companies!inner(name), sub_companies(name)',
       { count: 'exact' },
     )
     .order('service_start', { ascending: false })
@@ -52,9 +52,13 @@ export default async function QuotesPage({ searchParams }: PageProps) {
       .lte('service_start', `${month}-${String(last).padStart(2, '0')}`);
   }
 
-  // 견적번호 검색 (Q- 시작 또는 영문/숫자 → quote_no ilike)
-  if (q && /^Q-/i.test(q)) {
-    query = query.ilike('quote_no', `%${q}%`);
+  // 검색: Q- 로 시작하면 견적번호, 그 외에는 거래처명 — 모두 DB 전체 대상 서버 필터
+  if (q) {
+    if (/^Q-/i.test(q)) {
+      query = query.ilike('quote_no', `%${q}%`);
+    } else {
+      query = query.ilike('companies.name', `%${q}%`);
+    }
   }
 
   const { data, error, count } = await query;
@@ -79,7 +83,7 @@ export default async function QuotesPage({ searchParams }: PageProps) {
     sub_companies: { name: string } | null;
   };
 
-  let rows: QuotesRow[] = ((data ?? []) as unknown as Row[]).map((r) => ({
+  const rows: QuotesRow[] = ((data ?? []) as unknown as Row[]).map((r) => ({
     id: r.id,
     quote_no: r.quote_no,
     status: r.status,
@@ -89,11 +93,6 @@ export default async function QuotesPage({ searchParams }: PageProps) {
     company_name: r.companies?.name ?? '-',
     sub_company_name: r.sub_companies?.name ?? null,
   }));
-
-  // 한글 등 거래처명 검색은 후처리 (간단한 in-memory 필터, 페이지 단위 한정)
-  if (q && !/^Q-/i.test(q)) {
-    rows = rows.filter((r) => r.company_name.includes(q));
-  }
 
   return (
     <div>
