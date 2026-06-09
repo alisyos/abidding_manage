@@ -138,6 +138,7 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
   const extraDiscountRate = useWatch({ control: form.control, name: 'extra_discount_rate' }) ?? 0;
   const extraDiscountAmount =
     useWatch({ control: form.control, name: 'extra_discount_amount' }) ?? 0;
+  const forceDiscount = useWatch({ control: form.control, name: 'force_discount' }) ?? false;
 
   const calc = computeQuote(
     (items ?? []).map((i) => ({
@@ -150,6 +151,7 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
     Number(variableAdjust || 0),
     Number(extraDiscountRate || 0),
     Number(extraDiscountAmount || 0),
+    Boolean(forceDiscount),
   );
 
   // ── 개별 신규 견적: 이전 달 사용량 + 조정 delta(조정 후 수량) 불러오기 ──
@@ -181,6 +183,7 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
           extra_discount_rate: number;
           extra_discount_amount: number;
           extra_discount_note: string;
+          force_discount: boolean;
         } | null;
       };
       if (!res.ok || !data.source) {
@@ -205,6 +208,7 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
         form.setValue('extra_discount_rate', data.adjust.extra_discount_rate, opt);
         form.setValue('extra_discount_amount', data.adjust.extra_discount_amount, opt);
         form.setValue('extra_discount_note', data.adjust.extra_discount_note, opt);
+        form.setValue('force_discount', data.adjust.force_discount, opt);
       }
       const label = data.source.service_start.slice(0, 7).replace('-', '.');
       toast.success(`${label} 견적 기준 조정 후 수량을 불러왔습니다`);
@@ -479,8 +483,26 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
               </div>
             </div>
 
+            <div className="border-t border-gray-100 pt-4">
+              <label className="flex items-start gap-2 cursor-pointer">
+                <Checkbox
+                  checked={Boolean(forceDiscount)}
+                  onCheckedChange={(v) =>
+                    form.setValue('force_discount', v === true, { shouldDirty: true })
+                  }
+                  className="mt-0.5"
+                />
+                <span className="text-xs text-gray-700">
+                  할인가 강제 적용 (예외)
+                  <span className="block text-[10px] text-gray-400">
+                    할인가 합계가 임계값(100,000원) 미만이어도 할인가를 적용합니다.
+                  </span>
+                </span>
+              </label>
+            </div>
+
             <p className="text-[11px] text-gray-500">
-              ※ 표준 할인은 공시가 합계 ≥ 100,000원 시 자동 적용됩니다.
+              ※ 표준 할인은 할인가 합계 ≥ 100,000원 시 자동 적용됩니다.
             </p>
           </CardContent>
         </Card>

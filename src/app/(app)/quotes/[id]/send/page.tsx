@@ -97,6 +97,7 @@ export default async function SendQuotePage({ params }: PageProps) {
     extra_discount_rate: Number(qRaw.extra_discount_rate ?? 0),
     extra_discount_amount: Number(qRaw.extra_discount_amount ?? 0),
     extra_discount_note: qRaw.extra_discount_note ?? null,
+    force_discount: false,
     base_amount: Number(qRaw.base_amount),
     vat_amount: Number(qRaw.vat_amount),
     total_amount: Number(qRaw.total_amount),

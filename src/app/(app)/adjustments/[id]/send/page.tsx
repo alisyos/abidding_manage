@@ -123,6 +123,7 @@ export default async function SendAdjustmentPage({ params }: PageProps) {
     extra_discount_rate: Number(adj.quotes.extra_discount_rate ?? 0),
     extra_discount_amount: Number(adj.quotes.extra_discount_amount ?? 0),
     extra_discount_note: adj.quotes.extra_discount_note ?? null,
+    force_discount: false,
     base_amount: Number(adj.quotes.base_amount),
     vat_amount: Number(adj.quotes.vat_amount),
     total_amount: Number(adj.quotes.total_amount),

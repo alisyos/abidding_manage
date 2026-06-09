@@ -80,7 +80,7 @@ export function ProductsGrid({ initialRows }: ProductsGridProps) {
   return (
     <div className="space-y-3">
       <p className="text-xs text-gray-500">
-        ※ 공시 단가는 견적 산정의 기준이며, 공시가 합계가 100,000원 이상이면 할인가가 자동 적용됩니다.
+        ※ 공시 단가는 견적 산정의 기준이며, 할인가 합계가 100,000원 이상이면 할인가가 자동 적용됩니다.
       </p>
       <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
         <Table>

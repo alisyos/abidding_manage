@@ -125,6 +125,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     extra_discount_rate: Number(qRow.extra_discount_rate ?? 0),
     extra_discount_amount: Number(qRow.extra_discount_amount ?? 0),
     extra_discount_note: qRow.extra_discount_note ?? null,
+    force_discount: false,
     base_amount: Number(qRow.base_amount),
     vat_amount: Number(qRow.vat_amount),
     total_amount: Number(qRow.total_amount),

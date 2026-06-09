@@ -3,6 +3,7 @@ import { Document, Page, View, Text, StyleSheet } from '@react-pdf/renderer';
 
 import { formatKRW } from '@/lib/format/currency';
 import { buildPeriodLabel } from '@/lib/quotes/period';
+import { computeExtraDiscount } from '@/lib/quotes/calculator';
 import { todayKstISO } from '@/lib/format/date';
 import {
   MEDIA_LABEL,
@@ -332,9 +333,11 @@ export function QuotePdfDocument(props: QuotePdfProps) {
             <TotalRow label="변동 조정가" value={formatKRW(quote.variable_adjust)} />
           )}
           {(() => {
-            const extra =
-              Math.round(Number(quote.base_amount) * Number(quote.extra_discount_rate ?? 0)) +
-              Number(quote.extra_discount_amount ?? 0);
+            const extra = computeExtraDiscount(
+              Number(quote.base_amount),
+              Number(quote.extra_discount_rate ?? 0),
+              Number(quote.extra_discount_amount ?? 0),
+            );
             return extra > 0 ? (
               <TotalRow
                 label={`추가 할인${quote.extra_discount_note ? ` (${quote.extra_discount_note})` : ''}`}

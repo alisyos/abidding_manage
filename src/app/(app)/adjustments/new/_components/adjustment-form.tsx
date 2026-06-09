@@ -33,6 +33,8 @@ export interface QuoteOption {
   sub_company_name: string | null;
   service_start: string;
   service_end: string;
+  /** 대상 견적의 추가 할인율 (0~1). 조정 일할 정산액에도 동일 적용. */
+  extra_discount_rate: number;
   items: { media: Media; tier: Tier; quantity: number; unit_price: number }[];
   /** 조정 반영 후 현재 사용량 (원본 + Σ 기존 조정 delta). 없으면 items 사용. */
   currentQty?: Record<string, number>;
@@ -153,6 +155,7 @@ export function AdjustmentForm({ mode = 'create', quotes, prices, defaultQuoteId
         serviceStart: selectedQuote.service_start,
         serviceEnd: selectedQuote.service_end,
         adjustmentDate,
+        extraDiscountRate: selectedQuote.extra_discount_rate ?? 0,
       });
       return { media: m, deltas, hasChange, res };
     });
@@ -365,6 +368,11 @@ export function AdjustmentForm({ mode = 'create', quotes, prices, defaultQuoteId
               조정일자 {adjustmentDate} 기준 잔여 {preview.remainingDays}일 (
               {(preview.ratio * 100).toFixed(1)}%)
             </p>
+            {selectedQuote.extra_discount_rate > 0 && (
+              <p className="text-[11px] font-medium text-blue-700">
+                추가 할인율 {(selectedQuote.extra_discount_rate * 100).toFixed(1)}% 적용됨
+              </p>
+            )}
             <p className="text-[11px] text-gray-500">
               정산액 기본값은 천원 단위 내림(고객사 유리)이며, 매체별 최종 금액은 직접 수정할 수 있습니다.
             </p>

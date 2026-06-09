@@ -63,14 +63,6 @@ export async function createQuote(
     .single();
   const sender = (senderRow ?? {}) as Partial<SenderProfile>;
 
-  // quote_no 발급
-  let quoteNo: string;
-  try {
-    quoteNo = await generateQuoteNo(supabase, input.service_start);
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-
   // 금액 계산 — 임계값 기반 할인 자동 결정 + 추가 할인
   const calc = computeQuote(
     input.items.map((i) => ({
@@ -83,6 +75,7 @@ export async function createQuote(
     input.variable_adjust,
     input.extra_discount_rate,
     input.extra_discount_amount,
+    input.force_discount,
   );
 
   // created_by
@@ -90,36 +83,60 @@ export async function createQuote(
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { data: insRow, error: insErr } = await supabase
-    .from('quotes')
-    .insert({
-      quote_no: quoteNo,
-      company_id: input.company_id,
-      sub_company_id: input.sub_company_id ?? null,
-      status: 'draft',
-      service_start: input.service_start,
-      service_end: input.service_end,
-      addon_fee: input.addon_fee,
-      variable_adjust: input.variable_adjust,
-      fixed_adjust: input.fixed_adjust,
-      extra_discount_rate: input.extra_discount_rate,
-      extra_discount_amount: input.extra_discount_amount,
-      extra_discount_note: nullify(input.extra_discount_note),
-      base_amount: round2(calc.baseAmount),
-      vat_amount: calc.vatAmount,
-      total_amount: round2(calc.totalAmount),
-      sender_snapshot: sender,
-      bank_account: nullify(input.bank_account) ?? sender.bank_account ?? null,
-      payment_method: nullify(input.payment_method),
-      tax_invoice_type: input.tax_invoice_type ?? null,
-      notes: nullify(input.notes),
-      created_by: user?.id ?? null,
-    })
-    .select('id')
-    .single();
+  // quote_no 발급 + quotes insert — 번호 충돌(23505) 시 재발급 재시도.
+  // 삭제로 생긴 번호 빈틈/동시 생성 대비 방어선.
+  let insRow: { id: string } | null = null;
+  let quoteNo = '';
+  let lastErr: { message?: string } | null = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      quoteNo = await generateQuoteNo(supabase, input.service_start);
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
 
-  if (insErr || !insRow) {
-    return { ok: false, error: `견적 생성 실패: ${insErr?.message}` };
+    const { data, error: insErr } = await supabase
+      .from('quotes')
+      .insert({
+        quote_no: quoteNo,
+        company_id: input.company_id,
+        sub_company_id: input.sub_company_id ?? null,
+        status: 'draft',
+        service_start: input.service_start,
+        service_end: input.service_end,
+        addon_fee: input.addon_fee,
+        variable_adjust: input.variable_adjust,
+        fixed_adjust: input.fixed_adjust,
+        extra_discount_rate: input.extra_discount_rate,
+        extra_discount_amount: input.extra_discount_amount,
+        extra_discount_note: nullify(input.extra_discount_note),
+        force_discount: input.force_discount,
+        base_amount: round2(calc.baseAmount),
+        vat_amount: calc.vatAmount,
+        total_amount: round2(calc.totalAmount),
+        sender_snapshot: sender,
+        bank_account: nullify(input.bank_account) ?? sender.bank_account ?? null,
+        payment_method: nullify(input.payment_method),
+        tax_invoice_type: input.tax_invoice_type ?? null,
+        notes: nullify(input.notes),
+        created_by: user?.id ?? null,
+      })
+      .select('id')
+      .single();
+
+    if (!insErr && data) {
+      insRow = data;
+      break;
+    }
+    lastErr = insErr;
+    // 유니크 위반(quote_no 중복)만 재시도, 그 외 오류는 즉시 반환
+    if ((insErr as { code?: string } | null)?.code !== '23505') {
+      return { ok: false, error: `견적 생성 실패: ${insErr?.message}` };
+    }
+  }
+
+  if (!insRow) {
+    return { ok: false, error: `견적 생성 실패: ${lastErr?.message ?? '견적번호 충돌'}` };
   }
 
   // quote_items — quantity > 0 만 저장. unit_price는 적용된 단가(할인/공시)로 저장
@@ -169,6 +186,7 @@ export async function updateQuote(
     input.variable_adjust,
     input.extra_discount_rate,
     input.extra_discount_amount,
+    input.force_discount,
   );
 
   const { error: uErr } = await supabase
@@ -184,6 +202,7 @@ export async function updateQuote(
       extra_discount_rate: input.extra_discount_rate,
       extra_discount_amount: input.extra_discount_amount,
       extra_discount_note: nullify(input.extra_discount_note),
+      force_discount: input.force_discount,
       base_amount: round2(calc.baseAmount),
       vat_amount: calc.vatAmount,
       total_amount: round2(calc.totalAmount),
@@ -442,6 +461,7 @@ export async function bulkCreateQuotes(
     extra_discount_rate: number;
     extra_discount_amount: number;
     extra_discount_note: string | null;
+    force_discount: boolean;
     bank_account: string | null;
     payment_method: string | null;
     tax_invoice_type: 'receipt' | 'claim' | null;
@@ -451,7 +471,7 @@ export async function bulkCreateQuotes(
   const { data: sourceQuotesRaw, error: sErr } = await supabase
     .from('quotes')
     .select(
-      'id, quote_no, company_id, sub_company_id, service_start, addon_fee, variable_adjust, fixed_adjust, extra_discount_rate, extra_discount_amount, extra_discount_note, bank_account, payment_method, tax_invoice_type, notes, companies(name)',
+      'id, quote_no, company_id, sub_company_id, service_start, addon_fee, variable_adjust, fixed_adjust, extra_discount_rate, extra_discount_amount, extra_discount_note, force_discount, bank_account, payment_method, tax_invoice_type, notes, companies(name)',
     )
     .in('id', input.source_quote_ids);
   if (sErr) return { ok: false, error: `소스 견적 조회 실패: ${sErr.message}` };
@@ -522,6 +542,7 @@ export async function bulkCreateQuotes(
         carriedVariableAdjust,
         Number(src.extra_discount_rate ?? 0),
         Number(src.extra_discount_amount ?? 0),
+        Boolean(src.force_discount),
       );
 
       // quotes insert
@@ -540,6 +561,7 @@ export async function bulkCreateQuotes(
           extra_discount_rate: src.extra_discount_rate ?? 0,
           extra_discount_amount: src.extra_discount_amount ?? 0,
           extra_discount_note: src.extra_discount_note ?? null,
+          force_discount: src.force_discount ?? false,
           base_amount: round2(calc.baseAmount),
           vat_amount: calc.vatAmount,
           total_amount: round2(calc.totalAmount),

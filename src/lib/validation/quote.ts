@@ -29,6 +29,7 @@ export const quoteInputSchema = z
       .nonnegative('0 이상')
       .default(0),
     extra_discount_note: optString,
+    force_discount: z.boolean().default(false),
     bank_account: optString,
     payment_method: optString,
     tax_invoice_type: z.enum(['receipt', 'claim']).nullable().optional(),

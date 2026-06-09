@@ -3,27 +3,41 @@
  *
  * 가격 정책 (DMP 에이비딩 소개서):
  *   - 매체×등급별로 공시가(list_price) / 할인가(unit_price) 2종 존재
- *   - 공시가 기준 상품 합계 ≥ 100,000원이면 → 할인가 적용 (표준 할인)
+ *   - 할인가 기준 상품 합계(discountSum) ≥ 100,000원이면 → 할인가 적용 (표준 할인)
+ *   - 예외: forceDiscount=true 면 임계값 미달이어도 할인가 강제 적용
  *
  * 추가 할인 (견적별):
- *   - extra_discount_rate (0~1): baseAmount × rate
- *   - extra_discount_amount (원)
- *   - 둘 다 적용 (합산)
+ *   - extra_discount_amount (원): 먼저 차감
+ *   - extra_discount_rate (0~1): 할인액 차감 후 잔액에 적용
  *
  * 공식:
- *   listSum         = Σ (quantity × list_price)
- *   discountApplied = listSum ≥ DISCOUNT_THRESHOLD
+ *   listSum         = Σ (quantity × list_price)   (공시가 합계, 참고용)
+ *   discountSum     = Σ (quantity × unit_price)   (할인가 합계, 임계값 판정용)
+ *   discountApplied = forceDiscount || discountSum ≥ DISCOUNT_THRESHOLD
  *   appliedUnit_i   = discountApplied ? unit_price_i : list_price_i
  *   lineTotal_i     = quantity_i × appliedUnit_i
  *   itemsSum        = Σ lineTotal_i
  *   baseAmount      = itemsSum + addonFee
- *   extraDiscount   = round(baseAmount × extraDiscountRate) + extraDiscountAmount
+ *   extraDiscount   = extraDiscountAmount + round((baseAmount − extraDiscountAmount) × extraDiscountRate)
  *   adjusted        = baseAmount + fixedAdjust + variableAdjust − extraDiscount
  *   vatAmount       = round(adjusted × 0.1)
  *   totalAmount     = adjusted + vatAmount
  */
 
 export const DISCOUNT_THRESHOLD = 100000;
+
+/**
+ * 추가 할인 결합액 계산 — 할인액(amount)을 먼저 차감한 뒤,
+ * 남은 잔액(baseAmount − amount)에 할인율(rate)을 적용해 합산한다.
+ */
+export function computeExtraDiscount(
+  baseAmount: number,
+  extraDiscountRate: number = 0,
+  extraDiscountAmount: number = 0,
+): number {
+  const amount = extraDiscountAmount || 0;
+  return amount + Math.round((baseAmount - amount) * (extraDiscountRate || 0));
+}
 
 export interface QuoteCalcItem {
   quantity: number;
@@ -40,9 +54,9 @@ export interface QuoteCalcResult {
   lineTotals: number[];
   /** 상품 합계 (할인 적용 후) */
   itemsSum: number;
-  /** 공시가 기준 합계 (임계값 판정용) */
+  /** 공시가 기준 합계 (참고용) */
   listSum: number;
-  /** 할인가 기준 합계 (참고용) */
+  /** 할인가 기준 합계 (임계값 판정용) */
   discountSum: number;
   /** 표준 할인 적용 여부 */
   discountApplied: boolean;
@@ -59,6 +73,7 @@ export function computeQuote(
   variableAdjust: number,
   extraDiscountRate: number = 0,
   extraDiscountAmount: number = 0,
+  forceDiscount: boolean = false,
 ): QuoteCalcResult {
   const listSum = items.reduce(
     (a, i) => a + (i.quantity || 0) * (i.list_price || 0),
@@ -68,15 +83,14 @@ export function computeQuote(
     (a, i) => a + (i.quantity || 0) * (i.unit_price || 0),
     0,
   );
-  const discountApplied = listSum >= DISCOUNT_THRESHOLD;
+  const discountApplied = forceDiscount || discountSum >= DISCOUNT_THRESHOLD;
   const lineTotals = items.map(
     (i) => (i.quantity || 0) * (discountApplied ? (i.unit_price || 0) : (i.list_price || 0)),
   );
   const itemsSum = lineTotals.reduce((a, b) => a + b, 0);
   const baseAmount = itemsSum + (addonFee || 0);
 
-  const extraDiscount =
-    Math.round(baseAmount * (extraDiscountRate || 0)) + (extraDiscountAmount || 0);
+  const extraDiscount = computeExtraDiscount(baseAmount, extraDiscountRate, extraDiscountAmount);
 
   const adjusted = baseAmount + (fixedAdjust || 0) + (variableAdjust || 0) - extraDiscount;
   const vatAmount = Math.round(adjusted * 0.1);

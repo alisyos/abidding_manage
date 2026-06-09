@@ -4,6 +4,7 @@ import { Download, Upload } from 'lucide-react';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/server';
+import { computeExtraDiscount } from '@/lib/quotes/calculator';
 import { todayKstISO } from '@/lib/format/date';
 import {
   buildSalesPivot,
@@ -112,9 +113,11 @@ export default async function SalesPage({ searchParams }: PageProps) {
 
   const records: PivotSalesRecord[] = filtered.map((s) => {
     const base = Number(s.base_amount ?? 0);
-    const extraDiscount =
-      Math.round(base * Number(s.quotes?.extra_discount_rate ?? 0)) +
-      Number(s.quotes?.extra_discount_amount ?? 0);
+    const extraDiscount = computeExtraDiscount(
+      base,
+      Number(s.quotes?.extra_discount_rate ?? 0),
+      Number(s.quotes?.extra_discount_amount ?? 0),
+    );
     return {
       id: s.id,
       quote_id: s.quote_id,

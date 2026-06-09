@@ -77,6 +77,7 @@ export default async function NewQuotePage() {
     extra_discount_rate: 0,
     extra_discount_amount: 0,
     extra_discount_note: '',
+    force_discount: false,
     bank_account: '',
     payment_method: '',
     tax_invoice_type: null,
@@ -88,7 +89,7 @@ export default async function NewQuotePage() {
     <div>
       <PageHeader
         title="신규 견적"
-        description="견적번호는 저장 시 'Q-YYYYMM-###' 형식으로 자동 발급됩니다. 할인은 공시가 합계 100,000원 이상이면 자동 적용됩니다."
+        description="견적번호는 저장 시 'Q-YYYYMM-###' 형식으로 자동 발급됩니다. 할인은 할인가 합계 100,000원 이상이면 자동 적용됩니다."
       />
       <div className="p-8 max-w-6xl">
         <QuoteForm mode="create" defaultValues={defaults} companies={companies} prices={prices} />

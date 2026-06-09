@@ -1,6 +1,7 @@
 import { formatKRW } from '@/lib/format/currency';
 import { todayKstISO } from '@/lib/format/date';
 import { buildPeriodLabel } from '@/lib/quotes/period';
+import { computeExtraDiscount } from '@/lib/quotes/calculator';
 import {
   MEDIA_LABEL,
   TIER_LABEL,
@@ -144,9 +145,11 @@ export function QuotePreview({ quote, sender, company, subCompany, primaryContac
             </tr>
           )}
           {(() => {
-            const extra =
-              Math.round(Number(quote.base_amount) * Number(quote.extra_discount_rate ?? 0)) +
-              Number(quote.extra_discount_amount ?? 0);
+            const extra = computeExtraDiscount(
+              Number(quote.base_amount),
+              Number(quote.extra_discount_rate ?? 0),
+              Number(quote.extra_discount_amount ?? 0),
+            );
             return extra > 0 ? (
               <tr>
                 <Cell label>추가 할인{quote.extra_discount_note ? ` (${quote.extra_discount_note})` : ''}</Cell>

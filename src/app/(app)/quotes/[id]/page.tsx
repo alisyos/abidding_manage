@@ -17,6 +17,7 @@ import { createClient } from '@/lib/supabase/server';
 import { QuoteStatusBadge } from '@/components/quote/quote-status-badge';
 import { StatusChangeMenu } from '../_components/status-change-menu';
 import { formatKRW } from '@/lib/format/currency';
+import { computeExtraDiscount } from '@/lib/quotes/calculator';
 import { formatKstDate, formatKstDateTime } from '@/lib/format/date';
 import { buildPeriodLabel } from '@/lib/quotes/period';
 import {
@@ -210,8 +211,11 @@ export default async function QuoteDetailPage({ params }: PageProps) {
                   value={
                     <span className="text-rose-600">
                       −{formatKRW(
-                        Math.round(Number(q.base_amount) * Number(q.extra_discount_rate)) +
+                        computeExtraDiscount(
+                          Number(q.base_amount),
+                          Number(q.extra_discount_rate),
                           Number(q.extra_discount_amount),
+                        ),
                       )}
                       {Number(q.extra_discount_rate) > 0 &&
                         ` (${(Number(q.extra_discount_rate) * 100).toFixed(1)}%${

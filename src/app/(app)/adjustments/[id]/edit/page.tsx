@@ -41,6 +41,7 @@ export default async function EditAdjustmentPage({ params }: PageProps) {
     quote_no: string | null;
     service_start: string;
     service_end: string;
+    extra_discount_rate: number;
     companies: { name: string } | null;
     sub_companies: { name: string } | null;
   };
@@ -60,7 +61,9 @@ export default async function EditAdjustmentPage({ params }: PageProps) {
   const [qRes, itemsRes, adjRes, priceMap] = await Promise.all([
     supabase
       .from('quotes')
-      .select('id, quote_no, service_start, service_end, companies(name), sub_companies(name)')
+      .select(
+        'id, quote_no, service_start, service_end, extra_discount_rate, companies(name), sub_companies(name)',
+      )
       .eq('id', repr.quote_id)
       .single(),
     supabase
@@ -129,6 +132,7 @@ export default async function EditAdjustmentPage({ params }: PageProps) {
     sub_company_name: quote.sub_companies?.name ?? null,
     service_start: quote.service_start,
     service_end: quote.service_end,
+    extra_discount_rate: Number(quote.extra_discount_rate ?? 0),
     items: items.map((i) => ({
       media: i.media,
       tier: i.tier,

@@ -31,6 +31,7 @@ export default async function EditQuotePage({ params }: PageProps) {
     extra_discount_rate: number;
     extra_discount_amount: number;
     extra_discount_note: string | null;
+    force_discount: boolean;
     bank_account: string | null;
     payment_method: string | null;
     tax_invoice_type: TaxInvoiceType | null;
@@ -47,7 +48,7 @@ export default async function EditQuotePage({ params }: PageProps) {
     supabase
       .from('quotes')
       .select(
-        'id, quote_no, company_id, sub_company_id, service_start, service_end, addon_fee, variable_adjust, fixed_adjust, extra_discount_rate, extra_discount_amount, extra_discount_note, bank_account, payment_method, tax_invoice_type, notes',
+        'id, quote_no, company_id, sub_company_id, service_start, service_end, addon_fee, variable_adjust, fixed_adjust, extra_discount_rate, extra_discount_amount, extra_discount_note, force_discount, bank_account, payment_method, tax_invoice_type, notes',
       )
       .eq('id', params.id)
       .single(),
@@ -86,7 +87,8 @@ export default async function EditQuotePage({ params }: PageProps) {
   }
 
   // 기존 견적의 unit_price는 발급 시점 단가 스냅샷.
-  // 편집 시에는 현재 priceMap의 list_price를 다시 채워서 임계값 판정.
+  // 편집 시에는 현재 priceMap의 unit_price(할인가)/list_price(공시가)를 다시 채워서
+  // 할인가 합계 기준 임계값 판정.
   const defaults: QuoteInput = {
     company_id: q.company_id,
     sub_company_id: q.sub_company_id,
@@ -98,6 +100,7 @@ export default async function EditQuotePage({ params }: PageProps) {
     extra_discount_rate: Number(q.extra_discount_rate ?? 0),
     extra_discount_amount: Number(q.extra_discount_amount ?? 0),
     extra_discount_note: q.extra_discount_note ?? '',
+    force_discount: Boolean(q.force_discount),
     bank_account: q.bank_account ?? '',
     payment_method: q.payment_method ?? '',
     tax_invoice_type: q.tax_invoice_type,

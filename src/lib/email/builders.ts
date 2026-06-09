@@ -1,5 +1,6 @@
 import { renderEmailTemplate, type RenderedEmail } from './templates';
 import { buildPeriodLabel } from '@/lib/quotes/period';
+import { computeExtraDiscount } from '@/lib/quotes/calculator';
 import { formatKRW } from '@/lib/format/currency';
 import { generateFormattedAddress } from '@/lib/format/contact';
 import { MEDIA_LABEL, TIER_LABEL, type Tier } from '@/lib/supabase/types';
@@ -203,9 +204,11 @@ export function buildQuoteItemsTableHtml(
   }).join('');
 
   // 추가 할인 행 (적용액이 0이면 생략)
-  const extraDiscount =
-    Math.round(Number(quote.base_amount) * Number(quote.extra_discount_rate ?? 0)) +
-    Number(quote.extra_discount_amount ?? 0);
+  const extraDiscount = computeExtraDiscount(
+    Number(quote.base_amount),
+    Number(quote.extra_discount_rate ?? 0),
+    Number(quote.extra_discount_amount ?? 0),
+  );
   const extraNote = quote.extra_discount_note ? ` (${quote.extra_discount_note})` : '';
   const extraRow =
     extraDiscount > 0

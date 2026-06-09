@@ -121,6 +121,8 @@ export interface Quote {
   extra_discount_amount: number;
   /** 추가 할인 사유/메모 */
   extra_discount_note: string | null;
+  /** 표준 할인 임계값 미달이어도 할인가 강제 적용 (예외 토글) */
+  force_discount: boolean;
   base_amount: number;
   vat_amount: number;
   total_amount: number;

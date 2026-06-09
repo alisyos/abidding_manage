@@ -61,11 +61,12 @@ export async function GET(req: Request) {
     extra_discount_rate: number;
     extra_discount_amount: number;
     extra_discount_note: string | null;
+    force_discount: boolean;
   };
   const { data: aRaw } = await supabase
     .from('quotes')
     .select(
-      'addon_fee, fixed_adjust, extra_discount_rate, extra_discount_amount, extra_discount_note',
+      'addon_fee, fixed_adjust, extra_discount_rate, extra_discount_amount, extra_discount_note, force_discount',
     )
     .eq('id', prev.quote_id)
     .single();
@@ -78,6 +79,7 @@ export async function GET(req: Request) {
     extra_discount_rate: Number(a?.extra_discount_rate ?? 0),
     extra_discount_amount: Number(a?.extra_discount_amount ?? 0),
     extra_discount_note: a?.extra_discount_note ?? '',
+    force_discount: Boolean(a?.force_discount),
   };
 
   return NextResponse.json({

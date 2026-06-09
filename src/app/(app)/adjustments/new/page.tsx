@@ -1,7 +1,9 @@
 import { PageHeader } from '@/components/page-header';
 import { createClient } from '@/lib/supabase/server';
 import { fetchActivePriceMap } from '@/lib/quotes/pricing';
+import { todayKstISO } from '@/lib/format/date';
 import { AdjustmentForm, type QuoteOption, type PriceRow } from './_components/adjustment-form';
+import { AdjustmentQuoteFilter } from './_components/adjustment-quote-filter';
 import type { Media, Tier, Product } from '@/lib/supabase/types';
 
 export const metadata = { title: '조정 등록 · 에이비딩 관리' };
@@ -10,17 +12,23 @@ const MEDIA_ORDER: Media[] = ['K', 'S', 'M'];
 const TIER_ORDER: Tier[] = ['unique', 'premium', 'basic', 'lite'];
 
 interface PageProps {
-  searchParams: { quoteId?: string };
+  searchParams: { quoteId?: string; q?: string; month?: string };
 }
 
 export default async function NewAdjustmentPage({ searchParams }: PageProps) {
   const supabase = createClient();
+
+  const q = (searchParams.q ?? '').trim();
+  // month 미지정(undefined) → 이번 달 기본값 / 빈 문자열('') → 전체
+  const month =
+    searchParams.month === undefined ? todayKstISO().slice(0, 7) : searchParams.month.trim();
 
   type QuoteRow = {
     id: string;
     quote_no: string | null;
     service_start: string;
     service_end: string;
+    extra_discount_rate: number;
     companies: { name: string } | null;
     sub_companies: { name: string } | null;
   };
@@ -32,15 +40,29 @@ export default async function NewAdjustmentPage({ searchParams }: PageProps) {
     unit_price: number;
   };
 
-  const [qRes, priceMap] = await Promise.all([
-    supabase
-      .from('quotes')
-      .select('id, quote_no, service_start, service_end, companies(name), sub_companies(name)')
-      .order('service_start', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(200),
-    fetchActivePriceMap(supabase),
-  ]);
+  let quotesQuery = supabase
+    .from('quotes')
+    .select(
+      'id, quote_no, service_start, service_end, extra_discount_rate, companies!inner(name), sub_companies(name)',
+    )
+    .order('service_start', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  if (month && /^\d{4}-\d{2}$/.test(month)) {
+    const [yStr, mStr] = month.split('-');
+    const last = new Date(Number(yStr), Number(mStr), 0).getDate();
+    quotesQuery = quotesQuery
+      .gte('service_start', `${month}-01`)
+      .lte('service_start', `${month}-${String(last).padStart(2, '0')}`);
+  }
+
+  if (q) {
+    if (/^Q-/i.test(q)) quotesQuery = quotesQuery.ilike('quote_no', `%${q}%`);
+    else quotesQuery = quotesQuery.ilike('companies.name', `%${q}%`);
+  }
+
+  const [qRes, priceMap] = await Promise.all([quotesQuery, fetchActivePriceMap(supabase)]);
 
   if (qRes.error) {
     return (
@@ -125,6 +147,7 @@ export default async function NewAdjustmentPage({ searchParams }: PageProps) {
       sub_company_name: q.sub_companies?.name ?? null,
       service_start: q.service_start,
       service_end: q.service_end,
+      extra_discount_rate: Number(q.extra_discount_rate ?? 0),
       items: qItems,
       currentQty,
     };
@@ -144,7 +167,8 @@ export default async function NewAdjustmentPage({ searchParams }: PageProps) {
         title="조정 등록"
         description="중도 사용량 변동을 등록합니다. 일할 계산된 금액이 해당 견적의 변동조정가에 가산되며, 다음 단계에서 안내 메일을 발송합니다."
       />
-      <div className="p-8 max-w-5xl">
+      <div className="p-8 max-w-5xl space-y-6">
+        <AdjustmentQuoteFilter />
         <AdjustmentForm quotes={quotes} prices={prices} defaultQuoteId={searchParams.quoteId} />
       </div>
     </div>

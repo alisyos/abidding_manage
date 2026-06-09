@@ -3,9 +3,11 @@ import type { Tier } from '@/lib/supabase/types';
 /**
  * 조정(사용량 변동)의 일할 계산.
  *
- * 공식: Σ delta_tier × unit_price_tier × max(0, (잔여일 / 전체일))
+ * 공식: Σ delta_tier × unit_price_tier × max(0, (잔여일 / 전체일)) × (1 − extraDiscountRate)
  *   - 전체일 = serviceEnd - serviceStart + 1
  *   - 잔여일 = serviceEnd - adjustmentDate + 1  (음수는 0으로 clamp)
+ *   - extraDiscountRate: 대상 견적의 추가 할인율(0~1). 견적에 적용된 할인율을
+ *     조정 정산액에도 동일하게 반영. (할인'액'은 1회성이라 미반영)
  *
  * 결과 금액은 음수일 수도 있고 (수량 감소), 양수일 수도 있음 (수량 증가).
  * 반올림: 원 단위 정수.
@@ -16,6 +18,8 @@ export interface ProRatedDeltaInput {
   serviceStart: string; // 'YYYY-MM-DD'
   serviceEnd: string;
   adjustmentDate: string;
+  /** 대상 견적의 추가 할인율 (0~1). 기본 0. */
+  extraDiscountRate?: number;
 }
 
 export interface ProRatedDeltaResult {
@@ -36,13 +40,14 @@ export function calcProRatedDelta(input: ProRatedDeltaInput): ProRatedDeltaResul
   const remainingDays = Math.max(0, remainingDaysRaw);
   const ratio = totalDays > 0 ? remainingDays / totalDays : 0;
 
+  const factor = 1 - (input.extraDiscountRate || 0);
   const tiers: Tier[] = ['unique', 'premium', 'basic', 'lite'];
   const lineDeltas = {} as Record<Tier, number>;
   let total = 0;
   for (const tier of tiers) {
     const qty = input.deltas[tier] ?? 0;
     const price = input.unitPrices[tier] ?? 0;
-    const line = qty * price * ratio;
+    const line = qty * price * ratio * factor;
     lineDeltas[tier] = Math.round(line);
     total += lineDeltas[tier];
   }

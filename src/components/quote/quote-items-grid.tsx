@@ -27,12 +27,13 @@ interface Props {
 /**
  * 3×4 매트릭스 견적 품목 그리드.
  * - 부모 폼의 `items[*]` 를 useWatch 로 관찰하여 실시간 줄합계/총합 계산.
- * - 신규 정책: 공시가 기준 합계 ≥ 100,000원 → 할인가 적용
+ * - 신규 정책: 할인가 기준 합계 ≥ 100,000원 → 할인가 적용
  */
 export function QuoteItemsGrid({ itemKeys }: Props) {
   const form = useFormContext<QuoteInput>();
   const items = useWatch({ control: form.control, name: 'items' });
   const addonFee = useWatch({ control: form.control, name: 'addon_fee' }) ?? 0;
+  const forceDiscount = useWatch({ control: form.control, name: 'force_discount' }) ?? false;
 
   // (media,tier) → idx 매핑
   const indexByKey = useMemo(() => {
@@ -45,13 +46,19 @@ export function QuoteItemsGrid({ itemKeys }: Props) {
     return indexByKey.get(`${media}__${tier}` as PriceKey) ?? -1;
   }
 
-  // 공시가 기준 합계 → 임계값 판정
+  // 공시가 합계(참고) + 할인가 합계(임계값 판정용)
   const listSum = (items ?? []).reduce((sum, it, i) => {
     const qty = Number(it?.quantity ?? 0);
     const lp = Number(itemKeys[i]?.list_price ?? 0);
     return sum + qty * lp;
   }, 0);
-  const discountApplied = listSum >= DISCOUNT_THRESHOLD;
+  const discountSum = (items ?? []).reduce((sum, it, i) => {
+    const qty = Number(it?.quantity ?? 0);
+    const up = Number(itemKeys[i]?.unit_price ?? 0);
+    return sum + qty * up;
+  }, 0);
+  const discountApplied = Boolean(forceDiscount) || discountSum >= DISCOUNT_THRESHOLD;
+  const forcedException = Boolean(forceDiscount) && discountSum < DISCOUNT_THRESHOLD;
 
   // 줄합계 (적용 단가 기준)
   const lineTotals: number[] = (items ?? []).map((it, i) => {
@@ -129,27 +136,34 @@ export function QuoteItemsGrid({ itemKeys }: Props) {
       {/* 할인 적용 여부 안내 */}
       <div
         className={`rounded-md px-3 py-2 text-xs ${
-          discountApplied
+          discountApplied && !forcedException
             ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
             : 'bg-amber-50 text-amber-800 border border-amber-200'
         }`}
       >
-        {discountApplied ? (
+        {forcedException ? (
           <>
-            ✅ 할인가 적용 — 공시가 합계 {formatKRW(listSum)} ≥ {formatKRW(DISCOUNT_THRESHOLD)}{' '}
+            ⚠️ 할인가 강제 적용 (예외) — 할인가 합계 {formatKRW(discountSum)} 가 임계값{' '}
+            {formatKRW(DISCOUNT_THRESHOLD)} 미만이나 강제 적용 설정으로 할인가 적용 (절약{' '}
+            {formatKRW(savings)})
+          </>
+        ) : discountApplied ? (
+          <>
+            ✅ 할인가 적용 — 할인가 합계 {formatKRW(discountSum)} ≥ {formatKRW(DISCOUNT_THRESHOLD)}{' '}
             (절약 {formatKRW(savings)})
           </>
         ) : (
           <>
-            ℹ️ 공시가 적용 — 공시가 합계 {formatKRW(listSum)} 가 임계값{' '}
+            ℹ️ 공시가 적용 — 할인가 합계 {formatKRW(discountSum)} 가 임계값{' '}
             {formatKRW(DISCOUNT_THRESHOLD)} 미만. 수량을 늘리면 할인가로 자동 전환됩니다.
           </>
         )}
       </div>
 
       {/* 합계 요약 */}
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
         <SummaryCell label="공시가 합계" value={listSum} />
+        <SummaryCell label="할인가 합계 (판정 기준)" value={discountSum} />
         <SummaryCell label="품목 적용 합계" value={itemsSum} />
         <SummaryCell label="부가서비스" value={Number(addonFee || 0)} />
         <SummaryCell label="기본가 (소계)" value={baseAmount} />

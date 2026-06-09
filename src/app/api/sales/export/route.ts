@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { buildSalesPivot, type PivotQuoteItem, type PivotSalesRecord } from '@/lib/sales/pivot';
 import { buildSalesWorkbook } from '@/lib/sales/export-xlsx';
+import { computeExtraDiscount } from '@/lib/quotes/calculator';
 import type { Media, Tier, QuoteStatus } from '@/lib/supabase/types';
 
 export const runtime = 'nodejs';
@@ -93,9 +94,11 @@ export async function GET(req: Request) {
 
   const records: PivotSalesRecord[] = sales.map((s) => {
     const base = Number(s.base_amount ?? 0);
-    const extraDiscount =
-      Math.round(base * Number(s.quotes?.extra_discount_rate ?? 0)) +
-      Number(s.quotes?.extra_discount_amount ?? 0);
+    const extraDiscount = computeExtraDiscount(
+      base,
+      Number(s.quotes?.extra_discount_rate ?? 0),
+      Number(s.quotes?.extra_discount_amount ?? 0),
+    );
     return {
       id: s.id,
       quote_id: s.quote_id,

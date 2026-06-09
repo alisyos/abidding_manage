@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { computeExtraDiscount } from '@/lib/quotes/calculator';
 
 /**
  * 매출(sales_records) 경제값 단일 소스.
@@ -49,8 +50,11 @@ export async function computeSalesEconomics(
   const base = Number(q.base_amount ?? 0);
   const fixed = Number(q.fixed_adjust ?? 0);
   const salesVariable = Number(q.variable_adjust ?? 0) + proratedSum;
-  const extraDiscount =
-    Math.round(base * Number(q.extra_discount_rate ?? 0)) + Number(q.extra_discount_amount ?? 0);
+  const extraDiscount = computeExtraDiscount(
+    base,
+    Number(q.extra_discount_rate ?? 0),
+    Number(q.extra_discount_amount ?? 0),
+  );
 
   const adjusted = base + fixed + salesVariable - extraDiscount;
   const vat = Math.round(adjusted * 0.1);
