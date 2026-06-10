@@ -103,7 +103,7 @@ function MenuRow({ item, pathname }: { item: MenuItem; pathname: string }) {
   const isActiveSelf = item.href === pathname;
   const isActiveChild = item.children?.some((c) => pathname.startsWith(c.href));
   const hasChildren = !!item.children?.length;
-  const [open, setOpen] = useState<boolean>(!!isActiveChild || !!isActiveSelf);
+  const [open, setOpen] = useState<boolean>(true);
 
   // 헤더 행 (링크 OR 토글 버튼)
   const baseRow =

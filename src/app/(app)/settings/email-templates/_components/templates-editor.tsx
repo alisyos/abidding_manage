@@ -35,6 +35,11 @@ const VARIABLE_HINTS = [
   ['{{quote.total_amount}}', '견적가 (formatKRW 적용)'],
   ['{{quote.summary_label}}', '견적 요약 라벨 (예: 에이비딩 자동입찰 솔루션 2026.06 견적서 요약_거래처명)'],
   ['{{{quote.items_table_html}}}', '★ 견적 요약 표 HTML (반드시 중괄호 3개! 이스케이프 회피)'],
+  ['{{{adjustment.changes_html}}}', '★ [조정] 매체별 수정 전/후 표 HTML (중괄호 3개)'],
+  ['{{adjustment.changes_text}}', '[조정] 수정 전/후 평문(본문 텍스트용)'],
+  ['{{adjustment.pre_adjust_amount_abs}}', '[조정] 일할 금액 (부호 없는 절대값, formatKRW)'],
+  ['{{adjustment.amount_change_word}}', '[조정] 금액 방향 (추가/감액)'],
+  ['{{adjustment.adjustment_date}}', '[조정] 조정일자'],
 ] as const;
 
 export function TemplatesEditor({ templates }: Props) {

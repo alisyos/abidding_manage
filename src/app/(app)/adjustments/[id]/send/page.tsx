@@ -94,6 +94,39 @@ export default async function SendAdjustmentPage({ params }: PageProps) {
   const siblings = (siblingRaw ?? []) as unknown as SiblingRow[];
   const sourceRows = siblings.length > 0 ? siblings : [adj as unknown as SiblingRow];
 
+  // 수정 전 수량 계산용: 최초 견적 수량(quote_items) + 이번 일자 외 조정
+  const [itemsRes, otherAdjRes] = await Promise.all([
+    supabase.from('quote_items').select('media, tier, quantity').eq('quote_id', adj.quote_id),
+    supabase
+      .from('quote_adjustments')
+      .select('id, quote_id, adjustment_date, account_type, media, delta_unique, delta_premium, delta_basic, delta_lite, pre_adjust_amount, reason, created_at')
+      .eq('quote_id', adj.quote_id)
+      .neq('adjustment_date', adj.adjustment_date),
+  ]);
+
+  const quoteItems = ((itemsRes.data ?? []) as unknown as {
+    media: Media;
+    tier: 'unique' | 'premium' | 'basic' | 'lite';
+    quantity: number;
+  }[]).map((i) => ({ media: i.media, tier: i.tier, quantity: Number(i.quantity ?? 0) }));
+
+  const otherAdjustments: QuoteAdjustment[] = ((otherAdjRes.data ?? []) as unknown as SiblingRow[]).map(
+    (r) => ({
+      id: r.id,
+      quote_id: r.quote_id,
+      adjustment_date: r.adjustment_date,
+      account_type: r.account_type,
+      media: r.media as Media,
+      delta_unique: r.delta_unique,
+      delta_premium: r.delta_premium,
+      delta_basic: r.delta_basic,
+      delta_lite: r.delta_lite,
+      pre_adjust_amount: Number(r.pre_adjust_amount ?? 0),
+      reason: r.reason,
+      created_at: r.created_at,
+    }),
+  );
+
   const adjustments: QuoteAdjustment[] = sourceRows.map((r) => ({
     id: r.id,
     quote_id: r.quote_id,
@@ -147,6 +180,8 @@ export default async function SendAdjustmentPage({ params }: PageProps) {
     company: adj.quotes.companies ?? { name: '-' },
     contacts,
     template: tpl,
+    quoteItems,
+    otherAdjustments,
   });
 
   const { data: { user } } = await supabase.auth.getUser();

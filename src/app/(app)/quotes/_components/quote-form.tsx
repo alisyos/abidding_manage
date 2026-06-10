@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { QuoteItemsGrid } from '@/components/quote/quote-items-grid';
+import { CompanyCombobox } from './company-combobox';
 import { computeQuote } from '@/lib/quotes/calculator';
 import { formatKRW } from '@/lib/format/currency';
 import {
@@ -124,10 +125,13 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
 
   useEffect(() => {
     if (!selectedCompany) return;
+    const subs = selectedCompany.sub_companies;
     const curSub = form.getValues('sub_company_id');
-    if (curSub && !selectedCompany.sub_companies.find((s) => s.id === curSub)) {
-      form.setValue('sub_company_id', null);
-    }
+    const validCur = curSub && subs.some((s) => s.id === curSub) ? curSub : null;
+    let next = validCur;
+    // 세부거래처가 1개뿐이고 유효 선택이 없으면 자동 선택 (신규 작성 시)
+    if (mode === 'create' && !next && subs.length === 1) next = subs[0].id;
+    if (next !== curSub) form.setValue('sub_company_id', next, { shouldDirty: true });
   }, [companyId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 합계 미리보기 — 임계값 기반 할인 자동 + 추가 할인
@@ -288,23 +292,14 @@ export function QuoteForm({ mode, quoteId, quoteNo, defaultValues, companies, pr
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs">거래처 *</Label>
-                <Select
+                <CompanyCombobox
+                  companies={companies}
                   value={form.watch('company_id') || ''}
-                  onValueChange={(v) =>
+                  onChange={(v) =>
                     form.setValue('company_id', v, { shouldDirty: true, shouldValidate: true })
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="거래처 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {companies.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="거래처 검색·선택"
+                />
                 {form.formState.errors.company_id && (
                   <p className="mt-1 text-xs text-red-500">
                     {form.formState.errors.company_id.message}

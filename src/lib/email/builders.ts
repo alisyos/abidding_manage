@@ -3,7 +3,7 @@ import { buildPeriodLabel } from '@/lib/quotes/period';
 import { computeExtraDiscount } from '@/lib/quotes/calculator';
 import { formatKRW } from '@/lib/format/currency';
 import { generateFormattedAddress } from '@/lib/format/contact';
-import { MEDIA_LABEL, TIER_LABEL, type Tier } from '@/lib/supabase/types';
+import { MEDIA_LABEL, MEDIA_SHORT_LABEL, TIER_LABEL, type Tier } from '@/lib/supabase/types';
 import type {
   CompanyContact,
   EmailTemplate,
@@ -252,13 +252,112 @@ interface BuildAdjustmentEmailArgs {
   company: { name: string };
   contacts: CompanyContact[];
   template: EmailTemplate;
+  /** 견적의 최초 수량(quote_items). 수정 전 수량 계산용. */
+  quoteItems?: { media: Media; tier: Tier; quantity: number }[];
+  /** 이번 조정일자 묶음 외의 모든 조정. baseline 누적용. */
+  otherAdjustments?: QuoteAdjustment[];
 }
 
 const TIERS: Tier[] = ['unique', 'premium', 'basic', 'lite'];
+const MEDIA_SEQ: Media[] = ['K', 'S', 'M'];
+
+function deltaMap(a: QuoteAdjustment): Record<Tier, number> {
+  return {
+    unique: a.delta_unique,
+    premium: a.delta_premium,
+    basic: a.delta_basic,
+    lite: a.delta_lite,
+  };
+}
+
+/** 매체별 티어 수량 문자열: "프리미엄 530, 베이직 230" / 전부 0이면 "-". */
+function tierQtyLabel(qty: Record<Tier, number>): string {
+  const parts = TIERS.filter((t) => qty[t] > 0).map((t) => `${TIER_LABEL[t]} ${qty[t]}`);
+  return parts.length ? parts.join(', ') : '-';
+}
+
+/** 변동 표기: "(프리미엄 +110, 베이직 -20)" / 변동 없으면 ''. */
+function deltaLabel(delta: Record<Tier, number>): string {
+  const parts = TIERS.filter((t) => delta[t] !== 0).map(
+    (t) => `${TIER_LABEL[t]} ${delta[t] > 0 ? '+' : ''}${delta[t]}`,
+  );
+  return parts.length ? ` (${parts.join(', ')})` : '';
+}
+
+/**
+ * 매체별 수정 전/후 표(HTML)와 평문을 생성.
+ * 매체는 항상 3행(네이버/쇼핑/카카오). 수량 없으면 "-".
+ */
+function buildChangeTables(
+  quoteItems: { media: Media; tier: Tier; quantity: number }[],
+  otherAdjustments: QuoteAdjustment[],
+  eventAdjustments: QuoteAdjustment[],
+): { html: string; text: string } {
+  // baseline[media][tier] = 최초수량 + Σ(이번 일자 외 조정 delta), 0 클램프
+  const baseline: Record<Media, Record<Tier, number>> = {
+    K: { unique: 0, premium: 0, basic: 0, lite: 0 },
+    S: { unique: 0, premium: 0, basic: 0, lite: 0 },
+    M: { unique: 0, premium: 0, basic: 0, lite: 0 },
+  };
+  for (const it of quoteItems) {
+    if (baseline[it.media]) baseline[it.media][it.tier] += Number(it.quantity ?? 0);
+  }
+  for (const a of otherAdjustments) {
+    const d = deltaMap(a);
+    for (const t of TIERS) baseline[a.media][t] += Number(d[t] ?? 0);
+  }
+  for (const m of MEDIA_SEQ) for (const t of TIERS) baseline[m][t] = Math.max(0, baseline[m][t]);
+
+  // 이번 묶음 delta (매체별 합산)
+  const eventDelta: Record<Media, Record<Tier, number>> = {
+    K: { unique: 0, premium: 0, basic: 0, lite: 0 },
+    S: { unique: 0, premium: 0, basic: 0, lite: 0 },
+    M: { unique: 0, premium: 0, basic: 0, lite: 0 },
+  };
+  for (const a of eventAdjustments) {
+    const d = deltaMap(a);
+    for (const t of TIERS) eventDelta[a.media][t] += Number(d[t] ?? 0);
+  }
+
+  // after = baseline + eventDelta, 0 클램프
+  const after: Record<Media, Record<Tier, number>> = {
+    K: { ...baseline.K },
+    S: { ...baseline.S },
+    M: { ...baseline.M },
+  };
+  for (const m of MEDIA_SEQ) for (const t of TIERS) after[m][t] = Math.max(0, after[m][t] + eventDelta[m][t]);
+
+  const rowsHtml = MEDIA_SEQ.map((m) => {
+    const before = tierQtyLabel(baseline[m]);
+    const afterStr = tierQtyLabel(after[m]) + deltaLabel(eventDelta[m]);
+    return `<tr><th style="text-align:left;padding:4px 10px;border:1px solid #e5e7eb;background:#f9fafb;white-space:nowrap;">${MEDIA_SHORT_LABEL[m]}</th><td style="padding:4px 10px;border:1px solid #e5e7eb;">${before}</td><td style="padding:4px 10px;border:1px solid #e5e7eb;">${afterStr}</td></tr>`;
+  }).join('');
+
+  const html =
+    `<table style="border-collapse:collapse;font-size:13px;margin:8px 0;">` +
+    `<thead><tr>` +
+    `<th style="padding:4px 10px;border:1px solid #e5e7eb;background:#f3f4f6;">매체</th>` +
+    `<th style="padding:4px 10px;border:1px solid #e5e7eb;background:#f3f4f6;">수정 전</th>` +
+    `<th style="padding:4px 10px;border:1px solid #e5e7eb;background:#f3f4f6;">수정 후</th>` +
+    `</tr></thead><tbody>${rowsHtml}</tbody></table>`;
+
+  const textLines = ['[수정 전]'];
+  for (const m of MEDIA_SEQ) textLines.push(`  ${MEDIA_SHORT_LABEL[m]} : ${tierQtyLabel(baseline[m])}`);
+  textLines.push('[수정 후]');
+  for (const m of MEDIA_SEQ)
+    textLines.push(`  ${MEDIA_SHORT_LABEL[m]} : ${tierQtyLabel(after[m])}${deltaLabel(eventDelta[m])}`);
+
+  return { html, text: textLines.join('\n') };
+}
 
 export function buildAdjustmentEmail(args: BuildAdjustmentEmailArgs): BuiltEmail {
   const { adjustments, quote, sender, company, contacts, template } = args;
   const adjustment = adjustments[0];
+  const changes = buildChangeTables(
+    args.quoteItems ?? [],
+    args.otherAdjustments ?? [],
+    adjustments,
+  );
 
   const sortedContacts = [...contacts].sort((a, b) => {
     if (a.role !== b.role) return a.role === 'primary' ? -1 : 1;
@@ -319,6 +418,10 @@ export function buildAdjustmentEmail(args: BuildAdjustmentEmailArgs): BuiltEmail
       items,
       pre_adjust_amount: formatKRW(preAdjustAmount),
       pre_adjust_amount_raw: preAdjustAmount,
+      pre_adjust_amount_abs: formatKRW(Math.abs(preAdjustAmount)),
+      amount_change_word: preAdjustAmount < 0 ? '감액' : '추가',
+      changes_html: changes.html,
+      changes_text: changes.text,
       reason,
     },
   });

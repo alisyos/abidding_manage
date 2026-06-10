@@ -19,6 +19,13 @@ export const MEDIA_LABEL: Record<Media, string> = {
   M: '카카오_키워드',
 };
 
+// 조정 안내 메일 등에서 쓰는 축약 매체 라벨
+export const MEDIA_SHORT_LABEL: Record<Media, string> = {
+  K: '네이버',
+  S: '쇼핑',
+  M: '카카오',
+};
+
 export const TIER_LABEL: Record<Tier, string> = {
   unique: '유니크',
   premium: '프리미엄',
@@ -76,6 +83,20 @@ export interface SubCompany {
   database_code: string | null;
   agency_id: string | null;
   memo: string | null;
+  created_at: string;
+}
+
+export interface CompanyGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CompanyGroupMember {
+  group_id: string;
+  company_id: string;
   created_at: string;
 }
 
@@ -252,6 +273,8 @@ export interface Database {
       companies: TableDef<Company>;
       sub_companies: TableDef<SubCompany>;
       company_contacts: TableDef<CompanyContact>;
+      company_groups: TableDef<CompanyGroup>;
+      company_group_members: TableDef<CompanyGroupMember>;
       products: TableDef<Product>;
       quotes: TableDef<Quote>;
       quote_items: TableDef<QuoteItem>;

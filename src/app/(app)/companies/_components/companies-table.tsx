@@ -11,9 +11,18 @@ import { DataTable } from '@/components/data-table';
 import { ColumnHeader } from '@/components/data-table/column-header';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { StatusBadge } from './status-badge';
+import type { GroupOption } from './group-manager-dialog';
 import { ACCOUNT_TYPE_LABEL } from '@/lib/supabase/types';
 import { bulkActivate, bulkDeactivate, bulkSoftDelete } from '../actions';
+import { addCompaniesToGroup, removeCompaniesFromGroup } from '../group-actions';
 
 export interface CompaniesRow {
   id: string;
@@ -30,6 +39,7 @@ interface Props {
   totalCount: number;
   pageIndex: number;
   pageSize: number;
+  groups: GroupOption[];
   onPageChange: (i: number) => void;
   onPageSizeChange: (s: number) => void;
 }
@@ -39,11 +49,13 @@ export function CompaniesTable({
   totalCount,
   pageIndex,
   pageSize,
+  groups,
   onPageChange,
   onPageSizeChange,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [groupTarget, setGroupTarget] = useState<string>('');
 
   const columns = useMemo<ColumnDef<CompaniesRow>[]>(
     () => [
@@ -163,6 +175,31 @@ export function CompaniesTable({
     });
   }
 
+  function runGroup(
+    label: string,
+    fn: (groupId: string, ids: string[]) => Promise<{ ok: boolean; error?: string }>,
+    selectedIds: string[],
+    clear: () => void,
+  ) {
+    if (!groupTarget) {
+      toast.error('그룹을 선택해주세요');
+      return;
+    }
+    const groupName = groups.find((g) => g.id === groupTarget)?.name ?? '';
+    setBusy(label);
+    startTransition(async () => {
+      const res = await fn(groupTarget, selectedIds);
+      setBusy(null);
+      if (res.ok) {
+        toast.success(`${selectedIds.length}개 거래처 '${groupName}' ${label} 완료`);
+        clear();
+        router.refresh();
+      } else {
+        toast.error(`${label} 실패: ${res.error ?? ''}`);
+      }
+    });
+  }
+
   return (
     <DataTable
       columns={columns}
@@ -211,6 +248,43 @@ export function CompaniesTable({
             }}
           >
             {busy === '삭제' ? '처리중...' : '삭제'}
+          </Button>
+
+          <div className="mx-1 h-5 w-px bg-gray-300" />
+
+          <Select value={groupTarget} onValueChange={setGroupTarget}>
+            <SelectTrigger className="h-8 w-[150px] bg-white text-gray-900">
+              <SelectValue placeholder="그룹 선택" />
+            </SelectTrigger>
+            <SelectContent>
+              {groups.length === 0 ? (
+                <SelectItem value="__none" disabled>
+                  그룹 없음 · 그룹 관리에서 생성
+                </SelectItem>
+              ) : (
+                groups.map((g) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {g.name}
+                  </SelectItem>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={isPending || !groupTarget}
+            onClick={() => runGroup('담기', addCompaniesToGroup, selectedIds, clear)}
+          >
+            {busy === '담기' ? '처리중...' : '그룹에 담기'}
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={isPending || !groupTarget}
+            onClick={() => runGroup('빼기', removeCompaniesFromGroup, selectedIds, clear)}
+          >
+            {busy === '빼기' ? '처리중...' : '그룹에서 빼기'}
           </Button>
         </>
       )}

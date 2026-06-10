@@ -7,8 +7,8 @@ export default function CompaniesImportPage() {
   return (
     <div>
       <PageHeader
-        title="거래처 엑셀 가져오기"
-        description="레거시 xlsm 양식(raw / 견적서DB / 초안 시트)을 그대로 업로드하여 일괄 등록합니다. 이름 기준 upsert — 기존 거래처는 업데이트, 신규는 추가."
+        title="거래처 엑셀 대량 등록·수정"
+        description="기존 데이터를 다운로드해 엑셀에서 수정하거나, 빈 양식에 신규 거래처를 작성해 업로드합니다. 행의 숨김 ID로 신규/수정을 자동 판별합니다. (거래처 · 세부거래처 · 연락처)"
       />
       <div className="p-8 max-w-6xl">
         <ImportPageClient />

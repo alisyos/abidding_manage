@@ -13,6 +13,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import Link from 'next/link';
 
+const TEAM_CC_EMAIL = 'team_sp@dmpkorea.co.kr';
+
 interface Props {
   quoteId: string;
   initialTo: string;            // 줄바꿈 구분 문자열
@@ -46,6 +48,7 @@ export function SendPageClient({
   const [bodyHtml, setBodyHtml] = useState(initialBodyHtml);
   const [bodyText, setBodyText] = useState(initialBodyText);
   const [isTestSend, setIsTestSend] = useState(false);
+  const [includeTeamCc, setIncludeTeamCc] = useState(true);
   const [sending, setSending] = useState(false);
 
   async function handleSend() {
@@ -65,6 +68,16 @@ export function SendPageClient({
         return m ? m[1].trim() : x;
       });
 
+    // 팀메일 참조 — 체크 시 cc에 병합(테스트 발송 제외, 중복 방지)
+    const ccNormalized = normalize(ccList);
+    if (
+      includeTeamCc &&
+      !isTestSend &&
+      !ccNormalized.some((e) => e.toLowerCase() === TEAM_CC_EMAIL)
+    ) {
+      ccNormalized.push(TEAM_CC_EMAIL);
+    }
+
     setSending(true);
     try {
       const res = await fetch(`/api/quotes/${quoteId}/send`, {
@@ -72,7 +85,7 @@ export function SendPageClient({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           to: normalize(toList),
-          cc: normalize(ccList),
+          cc: ccNormalized,
           subject,
           body_html: bodyHtml,
           body_text: bodyText,
@@ -128,6 +141,17 @@ export function SendPageClient({
               placeholder="여러 명은 쉼표/줄바꿈으로 구분"
               className="font-mono text-xs"
             />
+            <label className="mt-2 flex items-center gap-2 text-xs cursor-pointer">
+              <Checkbox
+                checked={includeTeamCc}
+                onCheckedChange={(v) => setIncludeTeamCc(!!v)}
+                disabled={isTestSend}
+              />
+              <span>
+                팀메일 참조{' '}
+                <span className="font-mono text-gray-600">({TEAM_CC_EMAIL})</span>
+              </span>
+            </label>
           </div>
           <div>
             <Label className="text-xs">제목</Label>

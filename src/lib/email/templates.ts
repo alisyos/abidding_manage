@@ -38,8 +38,12 @@ export interface RenderVars {
     adjustment_date: string;
     media_label: string;
     items: { tier_label: string; delta: number }[];
-    pre_adjust_amount: string;       // formatKRW 가공 결과
+    pre_adjust_amount: string;       // formatKRW 가공 결과(부호 포함)
     pre_adjust_amount_raw: number;   // 부호 비교용 원시값
+    pre_adjust_amount_abs: string;   // formatKRW(|총액|)
+    amount_change_word: string;      // '추가' | '감액'
+    changes_html: string;            // 매체별 수정전/후 표 (triple-mustache로 출력)
+    changes_text: string;            // 평문 버전
     reason: string;
   };
 }

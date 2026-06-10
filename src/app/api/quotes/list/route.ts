@@ -21,6 +21,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const month = url.searchParams.get('month');
   const status = url.searchParams.get('status') as QuoteStatus | null;
+  const groupId = url.searchParams.get('group_id');
   const size = Math.min(500, Math.max(10, Number(url.searchParams.get('size') ?? '200')));
 
   let query = supabase
@@ -42,6 +43,22 @@ export async function GET(req: Request) {
       .lte('service_start', `${month}-${String(last).padStart(2, '0')}`);
   }
   if (status) query = query.eq('status', status);
+
+  // 그룹 필터: 해당 그룹에 속한 거래처의 견적만
+  if (groupId) {
+    const { data: memberRows, error: memberErr } = await supabase
+      .from('company_group_members')
+      .select('company_id')
+      .eq('group_id', groupId);
+    if (memberErr) {
+      return NextResponse.json({ error: memberErr.message }, { status: 500 });
+    }
+    const memberIds = (memberRows ?? []).map((m) => m.company_id);
+    query = query.in(
+      'company_id',
+      memberIds.length ? memberIds : ['00000000-0000-0000-0000-000000000000'],
+    );
+  }
 
   const { data, error } = await query;
   if (error) {

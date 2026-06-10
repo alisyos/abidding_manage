@@ -13,8 +13,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import type { GroupOption } from './group-manager-dialog';
 
-export function CompaniesFilterBar() {
+export function CompaniesFilterBar({ groups }: { groups: GroupOption[] }) {
   const router = useRouter();
   const sp = useSearchParams();
   const [q, setQ] = useState(sp.get('q') ?? '');
@@ -44,6 +45,7 @@ export function CompaniesFilterBar() {
 
   const accountType = sp.get('account_type') ?? 'all';
   const status = sp.get('status') ?? 'active';
+  const groupId = sp.get('group_id') ?? 'all';
 
   return (
     <div className="flex flex-wrap items-center gap-2 px-8 py-4 bg-white border-b border-gray-200">
@@ -82,7 +84,21 @@ export function CompaniesFilterBar() {
         </SelectContent>
       </Select>
 
-      {(q || sp.get('account_type') || sp.get('status')) && (
+      <Select value={groupId} onValueChange={(v) => setParam('group_id', v === 'all' ? null : v)}>
+        <SelectTrigger className="w-[160px]">
+          <SelectValue placeholder="그룹" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">전체 그룹</SelectItem>
+          {groups.map((g) => (
+            <SelectItem key={g.id} value={g.id}>
+              {g.name} ({g.member_count})
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {(q || sp.get('account_type') || sp.get('status') || sp.get('group_id')) && (
         <Button
           variant="ghost"
           size="sm"

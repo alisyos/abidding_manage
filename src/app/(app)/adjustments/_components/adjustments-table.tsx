@@ -54,7 +54,23 @@ function formatDeltaSummary(row: AdjustmentRow): string {
   return parts.length ? parts.join(' ') : '-';
 }
 
-export function AdjustmentsTable({ rows }: { rows: AdjustmentRow[] }) {
+interface Props {
+  rows: AdjustmentRow[];
+  totalCount: number;
+  pageIndex: number;
+  pageSize: number;
+  onPageChange: (i: number) => void;
+  onPageSizeChange: (s: number) => void;
+}
+
+export function AdjustmentsTable({
+  rows,
+  totalCount,
+  pageIndex,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+}: Props) {
   const router = useRouter();
 
   const [isPending, startTransition] = useTransition();
@@ -218,6 +234,13 @@ export function AdjustmentsTable({ rows }: { rows: AdjustmentRow[] }) {
       enableRowSelection
       onRowClick={(r) => router.push(`/quotes/${r.quote_id}`)}
       emptyMessage="조정 내역이 없습니다. 우측 상단의 '조정 등록'으로 시작하세요."
+      serverPagination={{
+        pageIndex,
+        pageSize,
+        totalCount,
+        onPageChange,
+        onPageSizeChange,
+      }}
       bulkActions={(selectedIds, clear) => (
         <Button
           size="sm"

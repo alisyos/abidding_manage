@@ -2,13 +2,35 @@ import Link from 'next/link';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/server';
-import { AdjustmentsTable, type AdjustmentRow } from './_components/adjustments-table';
+import { AdjustmentsFilterBar } from './_components/adjustments-filter-bar';
+import { AdjustmentsTableWrapper } from './_components/adjustments-table-wrapper';
+import type { AdjustmentRow } from './_components/adjustments-table';
 import type { Media } from '@/lib/supabase/types';
 
 export const metadata = { title: '조정 관리 · 에이비딩 관리' };
 
-export default async function AdjustmentsPage() {
+interface PageProps {
+  searchParams: {
+    q?: string;
+    month?: string;
+    page?: string;
+    size?: string;
+  };
+}
+
+export default async function AdjustmentsPage({ searchParams }: PageProps) {
   const supabase = createClient();
+
+  const q = (searchParams.q ?? '').trim();
+  // 월 필터: param 없음 → 현재 월(디폴트), 빈 문자열 → 전체 기간, YYYY-MM → 해당 월
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const effectiveMonth = searchParams.month === undefined ? currentMonth : searchParams.month;
+
+  const page = Math.max(1, Number(searchParams.page ?? '1'));
+  const pageSize = Math.min(100, Math.max(10, Number(searchParams.size ?? '25')));
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
 
   type Row = {
     id: string;
@@ -21,20 +43,46 @@ export default async function AdjustmentsPage() {
     delta_lite: number;
     pre_adjust_amount: number;
     reason: string | null;
-    quotes: { quote_no: string | null; company_id: string; companies: { name: string } | null } | null;
+    quotes: {
+      quote_no: string | null;
+      company_id: string;
+      service_start: string;
+      companies: { name: string } | null;
+    } | null;
   };
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('quote_adjustments')
     .select(
       `id, adjustment_date, quote_id, media,
        delta_unique, delta_premium, delta_basic, delta_lite,
        pre_adjust_amount, reason,
-       quotes(quote_no, company_id, companies(name))`,
+       quotes!inner(quote_no, company_id, service_start, companies!inner(name))`,
+      { count: 'exact' },
     )
     .order('adjustment_date', { ascending: false })
     .order('created_at', { ascending: false })
-    .limit(100);
+    .range(from, to);
+
+  // 기간: 대상 견적의 서비스 시작일(quotes.service_start) 기준
+  if (effectiveMonth && /^\d{4}-\d{2}$/.test(effectiveMonth)) {
+    const [yStr, mStr] = effectiveMonth.split('-');
+    const last = new Date(Number(yStr), Number(mStr), 0).getDate();
+    query = query
+      .gte('quotes.service_start', `${effectiveMonth}-01`)
+      .lte('quotes.service_start', `${effectiveMonth}-${String(last).padStart(2, '0')}`);
+  }
+
+  // 검색: Q- 로 시작하면 견적번호, 그 외에는 대상 견적의 거래처명
+  if (q) {
+    if (/^Q-/i.test(q)) {
+      query = query.ilike('quotes.quote_no', `%${q}%`);
+    } else {
+      query = query.ilike('quotes.companies.name', `%${q}%`);
+    }
+  }
+
+  const { data, error, count } = await query;
 
   if (error) {
     return (
@@ -71,8 +119,14 @@ export default async function AdjustmentsPage() {
           </Button>
         }
       />
+      <AdjustmentsFilterBar effectiveMonth={effectiveMonth} />
       <div className="p-8">
-        <AdjustmentsTable rows={rows} />
+        <AdjustmentsTableWrapper
+          rows={rows}
+          totalCount={count ?? 0}
+          pageIndex={page - 1}
+          pageSize={pageSize}
+        />
       </div>
     </div>
   );
